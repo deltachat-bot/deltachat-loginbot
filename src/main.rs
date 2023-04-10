@@ -10,6 +10,7 @@ use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
+use regex::Regex;
 
 #[derive(Deserialize)]
 struct BotConfig {
@@ -41,11 +42,12 @@ async fn main() -> anyhow::Result<()> {
         .context("Creating context failed")?;
     let events_emitter = ctx.get_event_emitter();
     let emitter_ctx = ctx.clone();
+    let re = Regex::new(r".*\((<topic_id>\d+)\)$")?;
     tokio::spawn(async move {
         while let Some(event) = events_emitter.recv().await {
             match event.typ {
                 EventType::IncomingMsg { chat_id, msg_id } => {
-                    if let Err(err) = handle_message(&emitter_ctx, chat_id, msg_id).await {
+                    if let Err(err) = handle_message(&emitter_ctx, chat_id, msg_id, &re).await {
                         println!("error handling message: {err}");
                     }
                 }
@@ -68,11 +70,19 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_message(ctx: &Context, chat_id: ChatId, msg_id: MsgId) -> anyhow::Result<()> {
+async fn handle_message(ctx: &Context, chat_id: ChatId, msg_id: MsgId, re: &Regex) -> anyhow::Result<()> {
     let chat = Chat::load_from_db(ctx, chat_id).await?;
+    let captures = re.captures(chat.get_name());
+    let topic_id = &captures["topic_id"];
+    if topic_id == "" {
+        println!("Chat name doesn't match: {}", chat.get_name());
+        return Ok(());
+    } 
     let incoming_msg = Message::load_from_db(ctx, msg_id)
         .await?
-        .get_text();
+        .get_text().unwrap_or_default();
+    let contact = Contact::load_from_db(ctx, incoming_msg.get_from_id());
+
 
     let mut msg = Message::new(Viewtype::Text);
     msg.set_text(incoming_msg);
