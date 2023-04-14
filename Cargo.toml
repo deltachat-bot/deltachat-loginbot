@@ -10,5 +10,6 @@ anyhow = "1.0.70"
 deltachat = { git = "https://github.com/deltachat/deltachat-core-rust", tag="v1.112.6"}
 regex = "1.7.3"
 serde = { version = "1.0.159", features = ["serde_derive"] }
+sled = "0.34.7"
 tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros", "signal"] }
 toml = { version = "0.7.3", features = ["parse"] }
