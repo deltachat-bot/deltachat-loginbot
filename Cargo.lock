@@ -851,6 +851,7 @@ dependencies = [
  "anyhow",
  "deltachat",
  "regex",
+ "reqwest",
  "serde",
  "sled",
  "tokio",
