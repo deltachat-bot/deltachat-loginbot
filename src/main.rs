@@ -28,7 +28,7 @@ struct NotifierConfig {
     discouse_base_url: String,
     api_key: String,
     api_username: String,
-    enabled_contact_email_addresses: bool
+    enabled_contact_email_addresses: Vec<String>,
 }
 
 #[derive(Deserialize)]
