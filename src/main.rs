@@ -1,3 +1,6 @@
+mod config;
+mod api;
+
 use anyhow::{Context as _, Result};
 use deltachat::contact::Contact;
 use deltachat::config::Config;
@@ -6,37 +9,13 @@ use deltachat::context::{Context, ContextBuilder};
 use deltachat::message::{Message, MsgId, Viewtype};
 use deltachat::EventType;
 
-use serde::Deserialize;
 use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
 use regex::Regex;
 
-#[derive(Deserialize)]
-struct BotConfig {
-    email: String,
-    password: String,
-    deltachat_db: String,
-    oauth_db: String,
-    notifier: NotifierConfig,
-    oauth: OAuthConfig,
-}
-
-#[derive(Deserialize)]
-struct NotifierConfig {
-    discouse_base_url: String,
-    api_key: String,
-    api_username: String,
-    enabled_contact_email_addresses: Vec<String>,
-}
-
-#[derive(Deserialize)]
-struct OAuthConfig {
-    client_id: String,
-    client_secret: String,
-    redirect_uri: String,
-}
+use crate::config::BotConfig;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
