@@ -1,5 +1,4 @@
 mod config;
-mod api;
 
 use anyhow::{Context as _, Result};
 use deltachat::contact::Contact;
