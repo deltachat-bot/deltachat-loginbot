@@ -1211,6 +1211,7 @@ name = "deltachat-discourse-loginbot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.21.0",
  "deltachat",
  "regex",
  "reqwest",
