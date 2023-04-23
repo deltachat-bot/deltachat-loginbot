@@ -13,6 +13,7 @@ use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
 use regex::Regex;
+use tide::Request;
 
 use crate::config::BotConfig;
 
@@ -33,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
         "Starting the bot. Address: {}",
         botconfig.email
     );
+    let db = sled::open(botconfig.db)?;
     let ctx = ContextBuilder::new(botconfig.deltachat_db.into())
         .open()
         .await
@@ -53,6 +55,11 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     
+    let mut backend = tide::with_state(db);
+    backend.at("/authorize").get(authorize_fn);
+    backend.at("/token").post(token_fn);
+    backend.at("/webhook").post(webhook_fn);
+
     if !ctx.get_config_bool(Config::Configured).await? {
         ctx.set_config(Config::Addr, Some(&botconfig.email)).await?;
         ctx.set_config(Config::MailPw, Some(&botconfig.password)).await?;
@@ -82,8 +89,6 @@ async fn handle_message(ctx: &Context, chat_id: ChatId, msg_id: MsgId, re: &Rege
     let incoming_msg = Message::load_from_db(ctx, msg_id)
         .await?;
     let contact = Contact::load_from_db(ctx, incoming_msg.get_from_id()).await?;
-    let discourse_user_data = fetch(format!("/admin/users/list/active.json?filter={}", contact.addr));
-    let topic_data = fetch(format!("/t/{topic_id}.json"));
 
 
     let mut msg = Message::new(Viewtype::Text);
@@ -91,4 +96,16 @@ async fn handle_message(ctx: &Context, chat_id: ChatId, msg_id: MsgId, re: &Rege
     println!("Sending back a message...");
     chat::send_msg(ctx, chat_id, &mut msg).await?;
     Ok(())
+}
+
+async fn webhook_fn(req: Request<sled::Db>) -> tide::Result {
+    todo!()
+}
+
+async fn authorize_fn(req: Request<sled::Db>) -> tide::Result {
+    todo!()
+}
+
+async fn token_fn(req: Request<sled::Db>) -> tide::Result {
+    todo!()
 }
