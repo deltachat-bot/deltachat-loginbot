@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct BotConfig {
     pub email: String,
     pub password: String,
@@ -10,7 +10,7 @@ pub struct BotConfig {
     pub oauth: OAuthConfig,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct OAuthConfig {
     pub client_id: String,
     pub client_secret: String,
