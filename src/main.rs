@@ -6,8 +6,6 @@ use deltachat::chat::{self, Chat, ChatId};
 use deltachat::config::Config;
 use deltachat::contact::Contact;
 use deltachat::context::{Context, ContextBuilder};
-use deltachat::message::{Message, MsgId, Viewtype};
-use deltachat::EventType;
 
 use regex::Regex;
 use std::env::{args, current_dir};
@@ -77,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn webhook_fn(req: Request<State>) -> tide::Result {
-    todo!()
+    Ok(Response::builder::build(200).build)
 }
 
 async fn authorize_fn(req: Request<State>) -> tide::Result {
