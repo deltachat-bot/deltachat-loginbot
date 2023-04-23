@@ -2,9 +2,8 @@ mod config;
 mod queries;
 
 use anyhow::{Context as _, Result};
-use deltachat::chat::{self, Chat, ChatId};
 use deltachat::config::Config;
-use deltachat::contact::Contact;
+use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
 
 use regex::Regex;
@@ -23,7 +22,6 @@ struct State {
     db: sled::Db,
     dc_context: Context,
     config: BotConfig,
-    b64engine: base64::Engine,
 }
 
 #[tokio::main]
@@ -52,7 +50,6 @@ async fn main() -> anyhow::Result<()> {
         db,
         dc_context: ctx,
         config: botconfig,
-        b64engine: base64::Engine::new(),
     };
     let mut backend = tide::with_state(state);
     backend.at("/authorize").get(authorize_fn);
@@ -107,7 +104,8 @@ async fn token_fn(req: Request<State>) -> tide::Result {
         let client_secret: String = "".to_string();
         if let Some(auth) = req.header("authorization") {
             let auth = auth.as_str().to_string();
-            let decoded = state.b64engine.decode(auth.replacen("Basic", "", 1));
+            let decoded =
+                base64::engine::general_purpose::STANDARD.decode(auth.replacen("Basic", "", 1));
             let decoded = String::from_utf8(decoded)?;
             let decoded = decoded.split(":").collect();
             if decoded.len() < 2 {
@@ -123,11 +121,18 @@ async fn token_fn(req: Request<State>) -> tide::Result {
             }
             let tree = state.db.open_tree("default")?;
             if let Some(data) = tree.get(code)? {
-                let user = Contact::load_from_db(&state.dc_context, data);
-                return Ok(Response::builder(200).body(Body::from_json(&json!({ "access_token": uuid::Uuid::new_v4().to_string(), "token_type": "bearer", "expires_in": 1, "info": {
-                    "username": user.get_name(),
-                    "email": user.get_addr(),
-                }}))));
+                let user = Contact::load_from_db(&state.dc_context, ContactId::new(u32::from_be_bytes(&data[..=4]))).await?;
+                return Ok(Response::builder(200).body(
+                        Body::from_json(
+                            &json!({
+                                "access_token": uuid::Uuid::new_v4().to_string(),
+                                "token_type": "bearer",
+                                "expires_in": 1,
+                                "info": {
+                                    "username": user.get_name(),
+                                    "email": user.get_addr(),
+                                }
+                            }))?).build());
             }
             return Ok(Response::builder(400).build());
         }
