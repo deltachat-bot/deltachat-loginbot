@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn webhook_fn(req: Request<State>) -> tide::Result {
-    Ok(Response::builder::build(200).build)
+    Ok(Response::builder::build(200).build())
 }
 
 async fn authorize_fn(req: Request<State>) -> tide::Result {
