@@ -6,3 +6,8 @@ pub struct AuthorizeQuery {
     pub redirect_uri: String,
     pub state: String,
 }
+
+#[derive(Deserialize)]
+pub struct TokenQuery {
+    pub code: Option<String>,
+}
