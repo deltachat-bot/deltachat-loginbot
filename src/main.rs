@@ -1,4 +1,5 @@
 mod config;
+mod queries;
 
 use anyhow::{Context as _, Result};
 use deltachat::contact::Contact;
@@ -13,9 +14,18 @@ use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
 use regex::Regex;
-use tide::Request;
+use tide::{Request, Response, Redirect};
 
 use crate::config::BotConfig;
+use crate::queries::*;
+
+#[derive(Clone)]
+struct State {
+    db: sled::Db,
+    dc_context: Context,
+    config: BotConfig,
+}
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -54,8 +64,13 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
-    
-    let mut backend = tide::with_state(db);
+   
+    let mut state = State {
+        db,
+        dc_context: ctx,
+        config: botconfig,
+    };
+    let mut backend = tide::with_state(state);
     backend.at("/authorize").get(authorize_fn);
     backend.at("/token").post(token_fn);
     backend.at("/webhook").post(webhook_fn);
@@ -98,14 +113,27 @@ async fn handle_message(ctx: &Context, chat_id: ChatId, msg_id: MsgId, re: &Rege
     Ok(())
 }
 
-async fn webhook_fn(req: Request<sled::Db>) -> tide::Result {
+async fn webhook_fn(req: Request<State>) -> tide::Result {
     todo!()
 }
 
-async fn authorize_fn(req: Request<sled::Db>) -> tide::Result {
-    todo!()
+async fn authorize_fn(req: Request<State>) -> tide::Result {
+    let queries: AuthorizeQuery = req.query()?;
+    let state = req.state();
+    let config = &state.config;
+    if queries.client_id != config.oauth.client_id {
+        return Ok(Response::builder(400).build());
+    }
+    if queries.redirect_uri != config.oauth.redirect_uri {
+        return Ok(Response::builder(400).build());
+    }
+    let auth_code: String = uuid::Uuid::new_v4().simple().to_string();
+    let tree = state.db.open_tree("default")?;
+    let contact_id: &str = &req.session().get::<String>("contact_id").unwrap();
+    tree.insert(&auth_code, contact_id)?;
+    Ok(Redirect::new(format!("{}?state={}&code={auth_code}", queries.redirect_uri, queries.state)).into())
 }
 
-async fn token_fn(req: Request<sled::Db>) -> tide::Result {
+async fn token_fn(req: Request<State>) -> tide::Result {
     todo!()
 }
