@@ -1,18 +1,20 @@
 mod config;
 mod queries;
 
-use anyhow::{Context as _, Result};
-use deltachat::config::Config;
-use deltachat::contact::{Contact, ContactId};
-use deltachat::context::{Context, ContextBuilder};
 
-use regex::Regex;
 use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
+
+use base64::Engine;
 use tide::prelude::*;
 use tide::{Body, Redirect, Request, Response};
+use regex::Regex;
+use anyhow::{Context as _, Result};
+use deltachat::config::Config;
+use deltachat::contact::{Contact, ContactId};
+use deltachat::context::{Context, ContextBuilder};
 
 use crate::config::BotConfig;
 use crate::queries::*;
@@ -105,9 +107,9 @@ async fn token_fn(req: Request<State>) -> tide::Result {
         if let Some(auth) = req.header("authorization") {
             let auth = auth.as_str().to_string();
             let decoded =
-                base64::engine::general_purpose::STANDARD.decode(auth.replacen("Basic", "", 1));
+                base64::engine::general_purpose::STANDARD.decode(auth.replacen("Basic", "", 1))?;
             let decoded = String::from_utf8(decoded)?;
-            let decoded = decoded.split(":").collect();
+            let decoded: Vec<&str> = decoded.split(":").collect();
             if decoded.len() < 2 {
                 return Ok(Response::builder(400).build());
             }
@@ -121,7 +123,7 @@ async fn token_fn(req: Request<State>) -> tide::Result {
             }
             let tree = state.db.open_tree("default")?;
             if let Some(data) = tree.get(code)? {
-                let user = Contact::load_from_db(&state.dc_context, ContactId::new(u32::from_be_bytes(&data[..=4]))).await?;
+                let user = Contact::load_from_db(&state.dc_context, ContactId::new(u32::from_be_bytes(&data[..]))).await?;
                 return Ok(Response::builder(200).body(
                         Body::from_json(
                             &json!({
