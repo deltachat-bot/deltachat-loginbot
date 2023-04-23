@@ -24,6 +24,7 @@ struct State {
     db: sled::Db,
     dc_context: Context,
     config: BotConfig,
+    b64engine: base64::Engine,
 }
 
 
@@ -69,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         dc_context: ctx,
         config: botconfig,
+        b64engine: base64::Engine::new(),
     };
     let mut backend = tide::with_state(state);
     backend.at("/authorize").get(authorize_fn);
@@ -135,5 +137,35 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
 }
 
 async fn token_fn(req: Request<State>) -> tide::Result {
-    todo!()
+    let queries: TokenQuery = req.query()?;
+    let state = req.state();
+    if let Some(code) = queries.code {
+        let client_id: String = "".to_string();
+        let client_secret: String = "".to_string();
+        if let Some(auth) = req.header("authorization") {
+            let auth = auth.as_str().to_string();
+            let decoded = state.b64engine.decode(auth.replacen("Basic", "", 1));
+            let decoded = String::from_utf8(decoded)?;
+            let decoded = decoded.split(":").collect();
+            if decoded.len() < 2 {
+                return Ok(Response::builder(400).build());
+            }
+            client_id = decoded[0].to_string();
+            client_secret = decoded[1].to_string();
+            if client_id != state.config.oauth.client_id {
+                return Ok(Response::builder(401).build());
+            }
+            if client_secret != state.config.oauth.client_secret {
+                return Ok(Response::builder(401).build());
+            }
+            let tree = state.db.open_tree("default")?;
+            if let Some(data) = tree.get(code)? {
+                let user = Contact::load_from_db(todo!());
+                return Ok(Response::builder(200).body(todo!()));
+            }
+            return Ok(Response::builder(400).build());
+        }
+        return Ok(Response::builder(401).build())
+    }
+    Ok(Response::builder(400).build())
 }
