@@ -2,19 +2,20 @@ mod config;
 mod queries;
 
 use anyhow::{Context as _, Result};
-use deltachat::contact::Contact;
-use deltachat::config::Config;
 use deltachat::chat::{self, Chat, ChatId};
+use deltachat::config::Config;
+use deltachat::contact::Contact;
 use deltachat::context::{Context, ContextBuilder};
 use deltachat::message::{Message, MsgId, Viewtype};
 use deltachat::EventType;
 
+use regex::Regex;
 use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
-use regex::Regex;
-use tide::{Request, Response, Redirect};
+use tide::prelude::*;
+use tide::{Body, Redirect, Request, Response};
 
 use crate::config::BotConfig;
 use crate::queries::*;
@@ -26,7 +27,6 @@ struct State {
     config: BotConfig,
     b64engine: base64::Engine,
 }
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,10 +41,7 @@ async fn main() -> anyhow::Result<()> {
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
 
-    println!(
-        "Starting the bot. Address: {}",
-        botconfig.email
-    );
+    println!("Starting the bot. Address: {}", botconfig.email);
     let db = sled::open(botconfig.db)?;
     let ctx = ContextBuilder::new(botconfig.deltachat_db.into())
         .open()
@@ -53,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let events_emitter = ctx.get_event_emitter();
     let emitter_ctx = ctx.clone();
     let re = Regex::new(r".*\((<topic_id>\d+)\)$")?;
-        let mut state = State {
+    let mut state = State {
         db,
         dc_context: ctx,
         config: botconfig,
@@ -66,7 +63,8 @@ async fn main() -> anyhow::Result<()> {
 
     if !ctx.get_config_bool(Config::Configured).await? {
         ctx.set_config(Config::Addr, Some(&botconfig.email)).await?;
-        ctx.set_config(Config::MailPw, Some(&botconfig.password)).await?;
+        ctx.set_config(Config::MailPw, Some(&botconfig.password))
+            .await?;
         ctx.set_config(Config::Bot, Some("1")).await?;
         ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
@@ -96,7 +94,11 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
     let tree = state.db.open_tree("default")?;
     let contact_id: &str = &req.session().get::<String>("contact_id").unwrap();
     tree.insert(&auth_code, contact_id)?;
-    Ok(Redirect::new(format!("{}?state={}&code={auth_code}", queries.redirect_uri, queries.state)).into())
+    Ok(Redirect::new(format!(
+        "{}?state={}&code={auth_code}",
+        queries.redirect_uri, queries.state
+    ))
+    .into())
 }
 
 async fn token_fn(req: Request<State>) -> tide::Result {
@@ -123,12 +125,15 @@ async fn token_fn(req: Request<State>) -> tide::Result {
             }
             let tree = state.db.open_tree("default")?;
             if let Some(data) = tree.get(code)? {
-                let user = Contact::load_from_db(todo!());
-                return Ok(Response::builder(200).body(todo!()));
+                let user = Contact::load_from_db(&state.dc_context, data);
+                return Ok(Response::builder(200).body(Body::from_json(&json!({ "access_token": uuid::Uuid::new_v4().to_string(), "token_type": "bearer", "expires_in": 1, "info": {
+                    "username": user.get_name(),
+                    "email": user.get_addr(),
+                }}))));
             }
             return Ok(Response::builder(400).build());
         }
-        return Ok(Response::builder(401).build())
+        return Ok(Response::builder(401).build());
     }
     Ok(Response::builder(400).build())
 }
