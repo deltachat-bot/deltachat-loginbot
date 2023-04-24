@@ -19,10 +19,10 @@ use crate::config::BotConfig;
 use crate::queries::*;
 
 #[derive(Clone)]
-struct State<'a> {
+struct State {
     db: sled::Db,
-    dc_context: &'a Context,
-    config: &'a BotConfig,
+    dc_context: Context,
+    config: BotConfig,
 }
 
 #[tokio::main]
@@ -46,8 +46,8 @@ async fn main() -> anyhow::Result<()> {
         .context("Creating context failed")?;
     let state = State {
         db,
-        dc_context: &ctx,
-        config: &botconfig,
+        dc_context: ctx.clone(),
+        config: botconfig.clone(),
     };
     let mut backend = tide::with_state(state);
     backend.at("/authorize").get(authorize_fn);
@@ -68,11 +68,11 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn webhook_fn(_req: Request<State<'_>>) -> tide::Result {
+async fn webhook_fn(_req: Request<State>) -> tide::Result {
     Ok(Response::builder(200).body(Body::empty()).build())
 }
 
-async fn authorize_fn(req: Request<State<'_>>) -> tide::Result {
+async fn authorize_fn(req: Request<State>) -> tide::Result {
     let queries: AuthorizeQuery = req.query()?;
     let state = req.state();
     let config = &state.config;
@@ -93,12 +93,12 @@ async fn authorize_fn(req: Request<State<'_>>) -> tide::Result {
     .into())
 }
 
-async fn token_fn(req: Request<State<'_>>) -> tide::Result {
+async fn token_fn(req: Request<State>) -> tide::Result {
     let queries: TokenQuery = req.query()?;
     let state = req.state();
     if let Some(code) = queries.code {
-        let mut client_id: String = "".to_string();
-        let mut client_secret: String = "".to_string();
+        let client_id: String;
+        let client_secret: String;
         if let Some(auth) = req.header("authorization") {
             let auth = auth.as_str().to_string();
             let decoded =
