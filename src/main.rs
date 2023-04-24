@@ -10,8 +10,7 @@ use std::str::from_utf8;
 use base64::Engine;
 use tide::prelude::*;
 use tide::{Body, Redirect, Request, Response};
-use regex::Regex;
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _};
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
@@ -20,10 +19,10 @@ use crate::config::BotConfig;
 use crate::queries::*;
 
 #[derive(Clone)]
-struct State {
+struct State<'a> {
     db: sled::Db,
-    dc_context: Context,
-    config: BotConfig,
+    dc_context: &'a Context,
+    config: &'a BotConfig,
 }
 
 #[tokio::main]
@@ -40,18 +39,15 @@ async fn main() -> anyhow::Result<()> {
     }
 
     println!("Starting the bot. Address: {}", botconfig.email);
-    let db = sled::open(botconfig.db)?;
-    let ctx = ContextBuilder::new(botconfig.deltachat_db.into())
+    let db = sled::open(&botconfig.db)?;
+    let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
         .await
         .context("Creating context failed")?;
-    let events_emitter = ctx.get_event_emitter();
-    let emitter_ctx = ctx.clone();
-    let re = Regex::new(r".*\((<topic_id>\d+)\)$")?;
-    let mut state = State {
+    let state = State {
         db,
-        dc_context: ctx,
-        config: botconfig,
+        dc_context: &ctx,
+        config: &botconfig,
     };
     let mut backend = tide::with_state(state);
     backend.at("/authorize").get(authorize_fn);
@@ -59,25 +55,24 @@ async fn main() -> anyhow::Result<()> {
     backend.at("/webhook").post(webhook_fn);
 
     if !ctx.get_config_bool(Config::Configured).await? {
-        ctx.set_config(Config::Addr, Some(&botconfig.email)).await?;
-        ctx.set_config(Config::MailPw, Some(&botconfig.password))
+        ctx.set_config(Config::Addr, Some(botconfig.email.clone().as_str())).await?;
+        ctx.set_config(Config::MailPw, Some(botconfig.password.clone().as_str()))
             .await?;
         ctx.set_config(Config::Bot, Some("1")).await?;
         ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
     }
-
-    ctx.start_io().await;
+    
+    backend.listen(botconfig.listen_addr.clone()).await?;
     tokio::signal::ctrl_c().await?;
-    ctx.stop_io().await;
     Ok(())
 }
 
-async fn webhook_fn(req: Request<State>) -> tide::Result {
-    Ok(Response::builder::build(200).build())
+async fn webhook_fn(_req: Request<State<'_>>) -> tide::Result {
+    Ok(Response::builder(200).body(Body::empty()).build())
 }
 
-async fn authorize_fn(req: Request<State>) -> tide::Result {
+async fn authorize_fn(req: Request<State<'_>>) -> tide::Result {
     let queries: AuthorizeQuery = req.query()?;
     let state = req.state();
     let config = &state.config;
@@ -98,12 +93,12 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
     .into())
 }
 
-async fn token_fn(req: Request<State>) -> tide::Result {
+async fn token_fn(req: Request<State<'_>>) -> tide::Result {
     let queries: TokenQuery = req.query()?;
     let state = req.state();
     if let Some(code) = queries.code {
-        let client_id: String = "".to_string();
-        let client_secret: String = "".to_string();
+        let mut client_id: String = "".to_string();
+        let mut client_secret: String = "".to_string();
         if let Some(auth) = req.header("authorization") {
             let auth = auth.as_str().to_string();
             let decoded =
@@ -123,7 +118,7 @@ async fn token_fn(req: Request<State>) -> tide::Result {
             }
             let tree = state.db.open_tree("default")?;
             if let Some(data) = tree.get(code)? {
-                let user = Contact::load_from_db(&state.dc_context, ContactId::new(u32::from_be_bytes(&data[..]))).await?;
+                let user = Contact::load_from_db(&state.dc_context, ContactId::new(u32::from_be_bytes(data[..].try_into()?))).await?;
                 return Ok(Response::builder(200).body(
                         Body::from_json(
                             &json!({
