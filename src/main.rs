@@ -52,6 +52,9 @@ async fn main() -> anyhow::Result<()> {
         config: botconfig.clone(),
     };
     let mut backend = tide::with_state(state);
+    backend
+        .at("/")
+        .get(|_| async { Ok("Hello, this is an instance of a 'login with deltachat'-Bot.") });
     backend.at("/authorize").get(authorize_fn);
     backend.at("/token").post(token_fn);
     backend.at("/webhook").post(webhook_fn);
