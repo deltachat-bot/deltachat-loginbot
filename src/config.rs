@@ -6,7 +6,6 @@ pub struct BotConfig {
     pub password: String,
     pub deltachat_db: String,
     pub oauth_db: String,
-    pub db: String,
     pub listen_addr: String,
     pub oauth: OAuthConfig,
 }

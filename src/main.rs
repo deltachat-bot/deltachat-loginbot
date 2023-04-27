@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     println!("Starting the bot. Address: {}", botconfig.email);
-    let db = sled::open(&botconfig.db)?;
+    let db = sled::open(&botconfig.oauth_db)?;
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
         .await
@@ -84,13 +84,16 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
     }
     let auth_code: String = uuid::Uuid::new_v4().simple().to_string();
     let tree = state.db.open_tree("default")?;
-    let contact_id: &str = &req.session().get::<String>("contact_id").unwrap();
-    tree.insert(&auth_code, contact_id)?;
-    Ok(Redirect::new(format!(
-        "{}?state={}&code={auth_code}",
-        queries.redirect_uri, queries.state
-    ))
-    .into())
+    if let Some(contact_id) = req.session().get::<String>("contact_id") {
+        tree.insert(&auth_code, &*contact_id)?;
+        Ok(Redirect::new(format!(
+            "{}?state={}&code={auth_code}",
+            queries.redirect_uri, queries.state
+        ))
+        .into())
+    } else {
+        return Ok(Response::builder(400).build());
+    }
 }
 
 async fn token_fn(req: Request<State>) -> tide::Result {
