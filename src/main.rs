@@ -27,7 +27,7 @@ struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    log::start();
+    femme::start();
     let botconfig: BotConfig;
     {
         let mut config_file_path = current_dir()
@@ -39,10 +39,10 @@ async fn main() -> anyhow::Result<()> {
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
 
-    println!("Starting the bot. Address: {}", botconfig.email);
-    println!("Open bot db");
+    log::info!("Starting the bot. Address: {}", botconfig.email);
+    log::info!("Open bot db");
     let db = sled::open(&botconfig.oauth_db)?;
-    println!("Open deltachat context");
+    log::info!("Open deltachat context");
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
         .await
@@ -64,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
     backend.at("/webhook").post(webhook_fn);
 
     if !ctx.get_config_bool(Config::Configured).await? {
-        println!("Configure deltachat context");
+        log::info!("Configure deltachat context");
         ctx.set_config(Config::Addr, Some(botconfig.email.clone().as_str()))
             .await?;
         ctx.set_config(Config::MailPw, Some(botconfig.password.clone().as_str()))
@@ -74,7 +74,6 @@ async fn main() -> anyhow::Result<()> {
         ctx.configure().await.context("configuration failed...")?;
     }
 
-    println!("Listen for connections on {}", botconfig.listen_addr);
     backend.listen(botconfig.listen_addr.clone()).await?;
     tokio::signal::ctrl_c().await?;
     Ok(())
