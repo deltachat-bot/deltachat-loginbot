@@ -1,19 +1,19 @@
 mod config;
 mod queries;
 
-
 use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::PathBuf;
 use std::str::from_utf8;
 
+use anyhow::Context as _;
 use base64::Engine;
-use tide::prelude::*;
-use tide::{Body, Redirect, Request, Response};
-use anyhow::{Context as _};
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
+use tide::log;
+use tide::prelude::*;
+use tide::{Body, Redirect, Request, Response};
 
 use crate::config::BotConfig;
 use crate::queries::*;
@@ -27,6 +27,7 @@ struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    femme::start();
     let botconfig: BotConfig;
     {
         let mut config_file_path = current_dir()
@@ -38,8 +39,10 @@ async fn main() -> anyhow::Result<()> {
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
 
-    println!("Starting the bot. Address: {}", botconfig.email);
+    log::info!("Starting the bot. Address: {}", botconfig.email);
+    log::info!("Open bot db");
     let db = sled::open(&botconfig.oauth_db)?;
+    log::info!("Open deltachat context");
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
         .await
@@ -50,19 +53,27 @@ async fn main() -> anyhow::Result<()> {
         config: botconfig.clone(),
     };
     let mut backend = tide::with_state(state);
+    if botconfig.enable_request_logging == Some(true) {
+        backend.with(tide::log::LogMiddleware::new());
+    }
+    backend
+        .at("/")
+        .get(|_| async { Ok("Hello, this is an instance of a 'login with deltachat'-Bot.") });
     backend.at("/authorize").get(authorize_fn);
     backend.at("/token").post(token_fn);
     backend.at("/webhook").post(webhook_fn);
 
     if !ctx.get_config_bool(Config::Configured).await? {
-        ctx.set_config(Config::Addr, Some(botconfig.email.clone().as_str())).await?;
+        log::info!("Configure deltachat context");
+        ctx.set_config(Config::Addr, Some(botconfig.email.clone().as_str()))
+            .await?;
         ctx.set_config(Config::MailPw, Some(botconfig.password.clone().as_str()))
             .await?;
         ctx.set_config(Config::Bot, Some("1")).await?;
         ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
     }
-    
+
     backend.listen(botconfig.listen_addr.clone()).await?;
     tokio::signal::ctrl_c().await?;
     Ok(())
@@ -121,18 +132,22 @@ async fn token_fn(req: Request<State>) -> tide::Result {
             }
             let tree = state.db.open_tree("default")?;
             if let Some(data) = tree.get(code)? {
-                let user = Contact::load_from_db(&state.dc_context, ContactId::new(u32::from_be_bytes(data[..].try_into()?))).await?;
-                return Ok(Response::builder(200).body(
-                        Body::from_json(
-                            &json!({
-                                "access_token": uuid::Uuid::new_v4().to_string(),
-                                "token_type": "bearer",
-                                "expires_in": 1,
-                                "info": {
-                                    "username": user.get_name(),
-                                    "email": user.get_addr(),
-                                }
-                            }))?).build());
+                let user = Contact::load_from_db(
+                    &state.dc_context,
+                    ContactId::new(u32::from_be_bytes(data[..].try_into()?)),
+                )
+                .await?;
+                return Ok(Response::builder(200)
+                    .body(Body::from_json(&json!({
+                        "access_token": uuid::Uuid::new_v4().to_string(),
+                        "token_type": "bearer",
+                        "expires_in": 1,
+                        "info": {
+                            "username": user.get_name(),
+                            "email": user.get_addr(),
+                        }
+                    }))?)
+                    .build());
             }
             return Ok(Response::builder(400).build());
         }
