@@ -11,6 +11,7 @@ use base64::Engine;
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
+use deltachat::chat::{create_group_chat, ProtectionStatus, get_chat_contacts, ChatId};
 use tide::log;
 use tide::prelude::*;
 use tide::{Body, Redirect, Request, Response};
@@ -62,6 +63,9 @@ async fn main() -> anyhow::Result<()> {
     backend.at("/authorize").get(authorize_fn);
     backend.at("/token").post(token_fn);
     backend.at("/webhook").post(webhook_fn);
+    backend.at("/requestQR").get(requestqr_fn);
+    backend.at("/checkStatus").get(check_status_fn);
+
 
     if !ctx.get_config_bool(Config::Configured).await? {
         log::info!("Configure deltachat context");
@@ -77,6 +81,44 @@ async fn main() -> anyhow::Result<()> {
     backend.listen(botconfig.listen_addr.clone()).await?;
     tokio::signal::ctrl_c().await?;
     Ok(())
+}
+
+async fn requestqr_fn(req: Request<State>) -> tide::Result {
+    let mut uuid = uuid::Uuid::new_v4().simple().to_string();
+    uuid.truncate(5);
+    let group_name = format!("LoginBot group {uuid}");
+    let state = req.state();
+    let group = create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name);
+    todo!()
+}
+
+async fn check_status_fn(req: Request<State>) -> tide::Result {
+    if let Some(groupId) = req.session().get::<String>("groupId") {
+        let dc_context = req.state().dc_context;
+        let chat_members = get_chat_contacts(&dc_context, ChatId::new(u32::from_str_radix(&groupId))).await?;
+        match chat_members.len() {
+            number_of_members => {
+                log::error!(format!("This must not happen. There is/are {number_of_members} in the group {groupId}"));
+                return Err();
+            }
+            1 => {
+                return Ok(Response::builder(200).body(Body::from_string("Not yet...".to_string())).build());
+            }
+            2 => {
+                let i = {
+                    if chat_members[0] == deltachat::contact::ContactId::SELF {
+                        1
+                    } else {
+                        0
+                    }
+                };
+                req.session().insert("contactId", chat_members[i].to_string());
+                Ok(Response::builder(200).body(Body::empty()).build())
+            }
+        }
+    } else {
+        return Ok(Response::builder(400).body(Body::empty()).build());
+    }
 }
 
 async fn webhook_fn(_req: Request<State>) -> tide::Result {
