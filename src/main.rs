@@ -89,17 +89,19 @@ async fn requestqr_fn(req: Request<State>) -> tide::Result {
     let group_name = format!("LoginBot group {uuid}");
     let state = req.state();
     let group = create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name);
-    todo!()
+    todo!() // I'm unsure what sort of String does the DC QR generator return so I stopped here.
+            // --Farooq
 }
 
 async fn check_status_fn(req: Request<State>) -> tide::Result {
-    if let Some(groupId) = req.session().get::<String>("groupId") {
+    let session = req.session();
+    if let Some(groupId) = session.get::<String>("groupId") {
         let dc_context = req.state().dc_context;
-        let chat_members = get_chat_contacts(&dc_context, ChatId::new(u32::from_str_radix(&groupId))).await?;
+        let chat_members = get_chat_contacts(&dc_context, ChatId::new(u32::from_str_radix(&groupId, 10)?)).await?;
         match chat_members.len() {
             number_of_members => {
-                log::error!(format!("This must not happen. There is/are {number_of_members} in the group {groupId}"));
-                return Err();
+                log::error!("{}", format!("This must not happen. There is/are {number_of_members} in the group {groupId}"));
+                return Err(tide::Error::from_str(500, "Some internal error occured..."));
             }
             1 => {
                 return Ok(Response::builder(200).body(Body::from_string("Not yet...".to_string())).build());
@@ -112,7 +114,7 @@ async fn check_status_fn(req: Request<State>) -> tide::Result {
                         0
                     }
                 };
-                req.session().insert("contactId", chat_members[i].to_string());
+                session.insert("contactId", chat_members[i].to_string().clone());
                 Ok(Response::builder(200).body(Body::empty()).build())
             }
         }
