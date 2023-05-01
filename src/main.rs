@@ -3,7 +3,7 @@ mod queries;
 
 use std::env::{args, current_dir};
 use std::fs::read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 
 use anyhow::Context as _;
@@ -15,6 +15,7 @@ use deltachat::context::{Context, ContextBuilder};
 use deltachat::qr_code_generator::get_securejoin_qr_svg;
 use tide::log;
 use tide::prelude::*;
+use tide::sessions::{MemoryStore, SessionMiddleware};
 use tide::{Body, Redirect, Request, Response};
 
 use crate::config::BotConfig;
@@ -58,6 +59,11 @@ async fn main() -> anyhow::Result<()> {
     if botconfig.enable_request_logging == Some(true) {
         backend.with(tide::log::LogMiddleware::new());
     }
+    backend.with(SessionMiddleware::new(
+        MemoryStore::new(),
+        b"this is secret! very secret! so much secret",
+    ));
+    // this "secret" must be changed to something random in production
     backend
         .at("/")
         .get(|_| async { Ok("Hello, this is an instance of a 'login with deltachat'-Bot.") });
@@ -66,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
     backend.at("/webhook").post(webhook_fn);
     backend.at("/requestQR").get(requestqr_fn);
     backend.at("/checkStatus").get(check_status_fn);
+    backend.at("/:filename").get(static_file_fn);
 
     if !ctx.get_config_bool(Config::Configured).await? {
         log::info!("Configure deltachat context");
@@ -83,7 +90,19 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn requestqr_fn(req: Request<State>) -> tide::Result {
+async fn static_file_fn(req: Request<State>) -> tide::Result {
+    let filename = req.param("filename")?;
+    match filename {
+        "delta-chat-logo.svg" | "favicon.ico" | "login.html" | "styles.css" => {
+            Ok(Response::builder(200)
+                .body(Body::from_file(Path::new("./").join(filename)).await?)
+                .build())
+        }
+        _ => Ok(Response::builder(404).body(Body::empty()).build()),
+    }
+}
+
+async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
     let mut uuid = uuid::Uuid::new_v4().simple().to_string();
     uuid.truncate(5);
     let group_name = format!("LoginBot group {uuid}");
@@ -92,14 +111,17 @@ async fn requestqr_fn(req: Request<State>) -> tide::Result {
         create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name).await?;
     let mut body = Body::from_string(get_securejoin_qr_svg(&state.dc_context, Some(group)).await?);
     body.set_mime("image/svg+xml");
-    Ok(Response::builder(200)
-        .body(body)
-        .build())
+    if let Err(_) = req.session_mut().insert("group_id", group.to_u32()) {
+        Ok(Response::builder(400).body(Body::empty()).build())
+    } else {
+        Ok(Response::builder(200).body(body).build())
+    }
 }
 
 async fn check_status_fn(mut req: Request<State>) -> tide::Result {
     if let Some(group_id) = req.session().get::<String>("group_id") {
         let dc_context = &req.state().dc_context;
+        log::info!("Getting chat members for group {group_id}");
         let chat_members =
             get_chat_contacts(dc_context, ChatId::new(u32::from_str_radix(&group_id, 10)?)).await?;
         match chat_members.len() {
@@ -116,7 +138,12 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
                         0
                     }
                 };
-                req.session_mut().insert("contactId", chat_members[i].to_string().clone());
+                if let Err(_) = req
+                    .session_mut()
+                    .insert("contact_id", chat_members[i].to_string().clone())
+                {
+                    return Ok(Response::builder(400).body(Body::empty()).build());
+                }
                 Ok(Response::builder(200).body(Body::empty()).build())
             }
             number_of_members => {
@@ -138,9 +165,11 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
     let state = req.state();
     let config = &state.config;
     if queries.client_id != config.oauth.client_id {
+        log::info!("Invalid client_id: {}", queries.client_id);
         return Ok(Response::builder(400).build());
     }
     if queries.redirect_uri != config.oauth.redirect_uri {
+        log::info!("Invalid redirect_uri: {}", queries.redirect_uri);
         return Ok(Response::builder(400).build());
     }
     let auth_code: String = uuid::Uuid::new_v4().simple().to_string();
@@ -153,7 +182,9 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
         ))
         .into())
     } else {
-        return Ok(Response::builder(400).build());
+        return Ok(Response::builder(200)
+            .body(Body::from_file(Path::new("./").join("login.html")).await?)
+            .build());
     }
 }
 
