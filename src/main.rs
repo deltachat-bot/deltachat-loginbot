@@ -117,11 +117,10 @@ async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
 }
 
 async fn check_status_fn(mut req: Request<State>) -> tide::Result {
-    if let Some(group_id) = req.session().get::<String>("group_id") {
+    if let Some(group_id) = req.session().get::<u32>("group_id") {
         let dc_context = &req.state().dc_context;
         log::info!("Getting chat members for group {group_id}");
-        let chat_members =
-            get_chat_contacts(dc_context, ChatId::new(u32::from_str_radix(&group_id, 10)?)).await?;
+        let chat_members = get_chat_contacts(dc_context, ChatId::new(group_id)).await?;
         match chat_members.len() {
             1 => Ok(Response::builder(200)
                 .body(Body::from_json(&json!({"waiting": true}))?)
