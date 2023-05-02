@@ -30,7 +30,7 @@ struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    femme::start();
+    femme::with_level(femme::LevelFilter::Debug);
     let botconfig: BotConfig;
     {
         let mut config_file_path = current_dir()
@@ -50,6 +50,19 @@ async fn main() -> anyhow::Result<()> {
         .open()
         .await
         .context("Creating context failed")?;
+    let dc_events = ctx.get_event_emitter();
+    let dc_event_task = tokio::spawn(async move {
+        while let Some(event) = dc_events.recv().await {
+            use deltachat::EventType;
+            match event.typ {
+                EventType::Error(message) => log::error!("{}", message),
+                EventType::Warning(message) => log::warn!("{}", message),
+                EventType::Info(message) => log::info!("{}", message),
+                event => log::debug!("{:?}", event),
+            }
+        }
+    });
+
     let state = State {
         db,
         dc_context: ctx.clone(),
@@ -88,7 +101,11 @@ async fn main() -> anyhow::Result<()> {
     ctx.start_io().await;
 
     backend.listen(botconfig.listen_addr.clone()).await?;
+    // TODO check if this works? does the shutdown work?
     tokio::signal::ctrl_c().await?;
+    log::info!("Shutting Down");
+    ctx.stop_io().await;
+    dc_event_task.await?;
     Ok(())
 }
 
