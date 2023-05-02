@@ -5,6 +5,7 @@ use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
+use std::time::Duration;
 
 use anyhow::Context as _;
 use base64::Engine;
@@ -20,6 +21,17 @@ use tide::{Body, Redirect, Request, Response};
 
 use crate::config::BotConfig;
 use crate::queries::*;
+
+// Short expiry is important, because right now we don't have an logout button on the login page
+// And even if we did have one, users would never get the idea that they not only need to logout of discourse,
+// but also out of the login with DC service.
+// Otherwise one click without scanning another qr code would log them in again as long as the session is valid.
+// Which can be bad in a "shared public library computer" situation.
+//
+// Session cookies might be ideal,
+// but according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#attributes
+// many browsers allow to restore them when resuming the browsing session or recovering it.
+const SESSION_EXPIRY_IN_SECONDS: u64 = 15 * 60;
 
 #[derive(Clone)]
 struct State {
@@ -59,10 +71,14 @@ async fn main() -> anyhow::Result<()> {
     if botconfig.enable_request_logging == Some(true) {
         backend.with(tide::log::LogMiddleware::new());
     }
-    backend.with(SessionMiddleware::new(
-        MemoryStore::new(),
-        b"this is secret! very secret! so much secret",
-    ));
+    backend.with(
+        SessionMiddleware::new(
+            MemoryStore::new(),
+            b"this is secret! very secret! so much secret",
+        )
+        .with_cookie_name("session")
+        .with_session_ttl(Some(Duration::from_secs(SESSION_EXPIRY_IN_SECONDS))),
+    );
     // this "secret" must be changed to something random in production
     backend
         .at("/")
