@@ -107,6 +107,7 @@ async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
     uuid.truncate(5);
     let group_name = format!("LoginBot group {uuid}");
     let state = req.state();
+    // TODO check first if group for the session already exists?
     let group =
         create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name).await?;
     let mut body = Body::from_string(get_securejoin_qr_svg(&state.dc_context, Some(group)).await?);
