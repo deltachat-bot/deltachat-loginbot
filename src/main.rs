@@ -84,6 +84,8 @@ async fn main() -> anyhow::Result<()> {
         ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
     }
+    // connect to email server
+    ctx.start_io().await;
 
     backend.listen(botconfig.listen_addr.clone()).await?;
     tokio::signal::ctrl_c().await?;
@@ -142,7 +144,7 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
             }
             number_of_members => {
                 log::error!("{}", format!("This must not happen. There is/are {number_of_members} in the group {group_id}"));
-                return Err(tide::Error::from_str(500, "Some internal error occured..."));
+                Err(tide::Error::from_str(500, "Some internal error occured..."))
             }
         }
     } else {
