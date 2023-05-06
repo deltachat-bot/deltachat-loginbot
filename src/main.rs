@@ -42,7 +42,7 @@ struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    femme::start();
+    femme::with_level(femme::LevelFilter::Debug);
     let botconfig: BotConfig;
     {
         let mut config_file_path = current_dir()
@@ -62,6 +62,19 @@ async fn main() -> anyhow::Result<()> {
         .open()
         .await
         .context("Creating context failed")?;
+    let dc_events = ctx.get_event_emitter();
+    let dc_event_task = tokio::spawn(async move {
+        while let Some(event) = dc_events.recv().await {
+            use deltachat::EventType;
+            match event.typ {
+                EventType::Error(message) => log::error!("{}", message),
+                EventType::Warning(message) => log::warn!("{}", message),
+                EventType::Info(message) => log::info!("{}", message),
+                event => log::debug!("{:?}", event),
+            }
+        }
+    });
+
     let state = State {
         db,
         dc_context: ctx.clone(),
@@ -100,9 +113,15 @@ async fn main() -> anyhow::Result<()> {
         ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
     }
+    // connect to email server
+    ctx.start_io().await;
 
     backend.listen(botconfig.listen_addr.clone()).await?;
+    // TODO check if this works? does the shutdown work?
     tokio::signal::ctrl_c().await?;
+    log::info!("Shutting Down");
+    ctx.stop_io().await;
+    dc_event_task.await?;
     Ok(())
 }
 
@@ -123,29 +142,24 @@ async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
     uuid.truncate(5);
     let group_name = format!("LoginBot group {uuid}");
     let state = req.state();
+    // TODO check first if group for the session already exists?
     let group =
         create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name).await?;
     let mut body = Body::from_string(get_securejoin_qr_svg(&state.dc_context, Some(group)).await?);
     body.set_mime("image/svg+xml");
-    if let Err(_) = req.session_mut().insert("group_id", group.to_u32()) {
-        Ok(Response::builder(400).body(Body::empty()).build())
-    } else {
-        Ok(Response::builder(200).body(body).build())
-    }
+    req.session_mut().insert("group_id", group.to_u32())?;
+    Ok(Response::builder(200).body(body).build())
 }
 
 async fn check_status_fn(mut req: Request<State>) -> tide::Result {
-    if let Some(group_id) = req.session().get::<String>("group_id") {
+    if let Some(group_id) = req.session().get::<u32>("group_id") {
         let dc_context = &req.state().dc_context;
         log::info!("Getting chat members for group {group_id}");
-        let chat_members =
-            get_chat_contacts(dc_context, ChatId::new(u32::from_str_radix(&group_id, 10)?)).await?;
+        let chat_members = get_chat_contacts(dc_context, ChatId::new(group_id)).await?;
         match chat_members.len() {
-            1 => {
-                return Ok(Response::builder(200)
-                    .body(Body::from_string("Not yet...".to_string()))
-                    .build());
-            }
+            1 => Ok(Response::builder(200)
+                .body(Body::from_json(&json!({"waiting": true}))?)
+                .build()),
             2 => {
                 let i = {
                     if chat_members[0] == deltachat::contact::ContactId::SELF {
@@ -154,21 +168,24 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
                         0
                     }
                 };
-                if let Err(_) = req
-                    .session_mut()
-                    .insert("contact_id", chat_members[i].to_string().clone())
-                {
-                    return Ok(Response::builder(400).body(Body::empty()).build());
-                }
-                Ok(Response::builder(200).body(Body::empty()).build())
+                req.session_mut()
+                    .insert("contact_id", chat_members[i].to_string())?;
+
+                Ok(Response::builder(200)
+                    .body(Body::from_json(&json!({"success": true}))?)
+                    .build())
             }
             number_of_members => {
                 log::error!("{}", format!("This must not happen. There is/are {number_of_members} in the group {group_id}"));
-                return Err(tide::Error::from_str(500, "Some internal error occured..."));
+                Err(tide::Error::from_str(500, "Some internal error occured..."))
             }
         }
     } else {
-        return Ok(Response::builder(400).body(Body::empty()).build());
+        Ok(Response::builder(400)
+            .body(Body::from_json(
+                &json!({"error": "you need to start the login process first, via /requestQR".to_owned()}),
+            )?)
+            .build())
     }
 }
 
