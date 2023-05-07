@@ -13,7 +13,7 @@ use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionSt
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
-use deltachat::qr_code_generator::get_securejoin_qr_svg;
+use deltachat::securejoin::get_securejoin_qr;
 use tide::log;
 use tide::prelude::*;
 use tide::sessions::{MemoryStore, SessionMiddleware};
@@ -145,8 +145,7 @@ async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
     // TODO check first if group for the session already exists?
     let group =
         create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name).await?;
-    let mut body = Body::from_string(get_securejoin_qr_svg(&state.dc_context, Some(group)).await?);
-    body.set_mime("image/svg+xml");
+    let body = Body::from_json(&json!({"link": get_securejoin_qr(&state.dc_context, Some(group)).await?}))?;
     req.session_mut().insert("group_id", group.to_u32())?;
     Ok(Response::builder(200).body(body).build())
 }
@@ -170,6 +169,7 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
                 };
                 req.session_mut()
                     .insert("contact_id", chat_members[i].to_string())?;
+                // TODO: say bye and leave
 
                 Ok(Response::builder(200)
                     .body(Body::from_json(&json!({"success": true}))?)
@@ -181,7 +181,7 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
             }
         }
     } else {
-        Ok(Response::builder(400)
+        Ok(Response::builder(401)
             .body(Body::from_json(
                 &json!({"error": "you need to start the login process first, via /requestQR".to_owned()}),
             )?)
