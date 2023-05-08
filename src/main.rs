@@ -130,7 +130,7 @@ async fn static_file_fn(req: Request<State>) -> tide::Result {
     match filename {
         "delta-chat-logo.svg" | "favicon.ico" | "login.html" | "styles.css" => {
             Ok(Response::builder(200)
-                .body(Body::from_file(Path::new("./").join(filename)).await?)
+                .body(Body::from_file(Path::new("./static/").join(filename)).await?)
                 .build())
         }
         _ => Ok(Response::builder(404).body(Body::empty()).build()),
