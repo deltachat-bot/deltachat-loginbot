@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/qrcode.min.js"></script>
+    <title>Delta Login</title>
+  </head>
+  <body class='login'>
+    <main>
+      <h1>Delta Login</h1>
+      <p>Scan the QR code with your Delta Chat app to authenticate yourself with your email address!</p>
+      <div id="loading">Loading</div>
+      <img class="qr hidden" id="qr" src="">
+      <a class="manual-link hidden" href='#' id="qr-content">Manual link</a>
+      <a class="manual-link clipboard-link hidden" href='#' id="copy-to-clipboard">Copy link to clipboard</a>
+      <input style="position: absolute; left: -9999px" readonly='true' id="qr-data" value="">
+      <div id="error"></div>
+    </main>
+    <script>
+     document.getElementById("copy-to-clipboard").onclick = (evt) => {
+        evt.preventDefault();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(document.getElementById("qr-content").href);
+        } else {
+          window.alert("Your browser does not support coping to clipboard :(");
+        }
+      };
+
+      var cheskStatusTimer;
+      function requestQR() {
+        fetch("/requestQR").then(response => response.json()).then((response_json) => {
+          console.log("Got this JSON", response_json);
+          if (response_json.link) {
+            document.getElementById("qr-content").href = response_json.link;
+          } else {
+                document.getElementById("error").innerHTML = "Could not get the QR code. Please reload the page and try again" + JSON.stringify(request_json);
+          }
+          document.getElementById("loading").classList.remove("hidden");
+        });
+        checkStatusTimer = setInterval(checkStatus, 5000);
+      }
+      requestQR();
+      function checkStatus() {
+        fetch("/checkStatus").then((response) => response.json()).then((response_json) => {
+          if (response_json.success) {
+            clearInterval(checkStatusTimer);
+            /*
+            Don't just reload but append a parameter to the URL so it is not the
+            same as before. For equal URLs, browsers apparently don't send a
+            cookie they didn't have when requesting the page for the first time.
+             */
+            let url = window.location.href;
+            if (url.indexOf("?") > 0) {
+              url += "&";
+            } else {
+              url += "?";
+            }
+            url += "yes=no";
+          }
+        });
+      }
+      </script>
+    </body>
+</html>
