@@ -19,6 +19,7 @@ use tide::log;
 use tide::prelude::*;
 use tide::sessions::{MemoryStore, SessionMiddleware};
 use tide::{Body, Redirect, Request, Response};
+use rand::RngCore;
 
 use crate::config::BotConfig;
 use crate::queries::*;
@@ -85,10 +86,16 @@ async fn main() -> anyhow::Result<()> {
     if botconfig.enable_request_logging == Some(true) {
         backend.with(tide::log::LogMiddleware::new());
     }
+    let secret: [u8; 20] = {
+        let mut secret = [0u8; 20];
+        let mut rng = rand::rngs::OsRng::default();
+        rng.fill_bytes(&mut secret);
+        secret
+    };
     backend.with(
         SessionMiddleware::new(
             MemoryStore::new(),
-            b"this is secret! very secret! so much secret",
+            &secret, 
         )
         .with_cookie_name("session")
         .with_session_ttl(Some(Duration::from_secs(SESSION_EXPIRY_IN_SECONDS))),
@@ -135,10 +142,10 @@ async fn main() -> anyhow::Result<()> {
         ctx.configure().await.context("configuration failed...")?;
     }
     // connect to email server
+    log::info!("Serving static files from {}", botconfig.static_dir.unwrap_or("./static/".to_string()));
     ctx.start_io().await;
 
     backend.listen(botconfig.listen_addr.clone()).await?;
-    // TODO check if this works? does the shutdown work?
     tokio::signal::ctrl_c().await?;
     log::info!("Shutting Down");
     ctx.stop_io().await;

@@ -9,6 +9,7 @@ pub struct BotConfig {
     pub listen_addr: String,
     pub oauth: OAuthConfig,
     pub enable_request_logging: Option<bool>,
+    pub static_dir: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
