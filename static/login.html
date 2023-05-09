@@ -16,7 +16,6 @@
       <img class="qr hidden" id="qr" src="">
       <a class="manual-link hidden" href='#' id="qr-content">Manual link</a>
       <a class="manual-link clipboard-link hidden" href='#' id="copy-to-clipboard">Copy link to clipboard</a>
-      <input style="position: absolute; left: -9999px" readonly='true' id="qr-data" value="">
       <div id="error"></div>
     </main>
     <script>
@@ -30,19 +29,29 @@
       };
 
       var cheskStatusTimer;
-      function requestQR() {
-        fetch("/requestQR").then(response => response.json()).then((response_json) => {
+      var requestQrSvgTimer;
+      function requestQr() {
+        fetch("/requestQr").then(response => response.json()).then((response_json) => {
           console.log("Got this JSON", response_json);
           if (response_json.link) {
             document.getElementById("qr-content").href = response_json.link;
           } else {
-                document.getElementById("error").innerHTML = "Could not get the QR code. Please reload the page and try again" + JSON.stringify(request_json);
+            document.getElementById("error").innerHTML = "Could not get the QR code. Please reload the page and try again" + JSON.stringify(request_json);
           }
-          document.getElementById("loading").classList.remove("hidden");
+          checkStatusTimer = setInterval(checkStatus, 5000);
         });
-        checkStatusTimer = setInterval(checkStatus, 5000);
       }
-      requestQR();
+      requestQr();
+      requestQrSvgTimer = setInterval(() => {
+        fetch("/requestQrSvg", { method: "HEAD" }).then((response) => {
+          if (response.ok) {
+            document.getElementById("qr").src = "/requestQrSvg";
+            document.getElementById("qr").classList.remove("hidden");
+            document.getElementById("loading").classList.add("hidden");
+            clearInterval(requestQrSvgTimer);
+          }
+        });
+      }, 100);
       function checkStatus() {
         fetch("/checkStatus").then((response) => response.json()).then((response_json) => {
           if (response_json.success) {
@@ -59,6 +68,7 @@
               url += "?";
             }
             url += "yes=no";
+            window.location.href = url;
           }
         });
       }

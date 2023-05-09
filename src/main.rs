@@ -14,6 +14,7 @@ use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
 use deltachat::securejoin::get_securejoin_qr;
+use deltachat::qr_code_generator::get_securejoin_qr_svg;
 use tide::log;
 use tide::prelude::*;
 use tide::sessions::{MemoryStore, SessionMiddleware};
@@ -99,7 +100,9 @@ async fn main() -> anyhow::Result<()> {
     backend.at("/authorize").get(authorize_fn);
     backend.at("/token").post(token_fn);
     backend.at("/webhook").post(webhook_fn);
-    backend.at("/requestQR").get(requestqr_fn);
+    backend.at("/requestQr").get(requestqr_fn);
+    backend.at("/requestQrSvg").get(requestqr_svg_fn);
+    backend.at("/requestQrSvg").head(requestqr_svg_check_fn);
     backend.at("/checkStatus").get(check_status_fn);
     backend.at("/:filename").get(static_file_fn);
 
@@ -148,6 +151,25 @@ async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
     let body = Body::from_json(&json!({"link": get_securejoin_qr(&state.dc_context, Some(group)).await?}))?;
     req.session_mut().insert("group_id", group.to_u32())?;
     Ok(Response::builder(200).body(body).build())
+}
+
+async fn requestqr_svg_check_fn(req: Request<State>) -> tide::Result {
+    if let Some(_) = req.session().get::<u32>("group_id") {
+        Ok(Response::builder(200).body(Body::empty()).build())
+    } else {
+        Ok(Response::builder(400).body(Body::empty()).build())
+    }
+}
+
+async fn requestqr_svg_fn(req: Request<State>) -> tide::Result {
+    if let Some(group_id) = req.session().get::<u32>("group_id") {
+        let state = req.state();
+        let mut body = Body::from_string(get_securejoin_qr_svg(&state.dc_context, Some(ChatId::new(group_id))).await?);
+        body.set_mime("image/svg+xml");
+        Ok(Response::builder(200).body(body).build())
+    } else {
+        Ok(Response::builder(400).body(Body::empty()).build())
+    }
 }
 
 async fn check_status_fn(mut req: Request<State>) -> tide::Result {
@@ -216,7 +238,7 @@ async fn authorize_fn(req: Request<State>) -> tide::Result {
         .into())
     } else {
         return Ok(Response::builder(200)
-            .body(Body::from_file(Path::new("./").join("login.html")).await?)
+            .body(Body::from_file(Path::new("./static/").join("login.html")).await?)
             .build());
     }
 }
