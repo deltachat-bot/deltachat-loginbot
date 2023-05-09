@@ -94,8 +94,8 @@ async fn main() -> anyhow::Result<()> {
     if botconfig.enable_request_logging == Some(true) {
         backend.with(tide::log::LogMiddleware::new());
     }
-    let secret: [u8; 20] = {
-        let mut secret = [0u8; 20];
+    let secret: [u8; 48] = {
+        let mut secret = [0u8; 48];
         let mut rng = rand::rngs::OsRng::default();
         rng.fill_bytes(&mut secret);
         secret
