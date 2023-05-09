@@ -10,6 +10,7 @@ pub struct BotConfig {
     pub oauth: OAuthConfig,
     pub enable_request_logging: Option<bool>,
     pub static_dir: Option<String>,
+    pub log_level: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug)]

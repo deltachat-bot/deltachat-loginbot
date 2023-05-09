@@ -5,6 +5,7 @@ oauth_db = "db/oauth.sled"
 listen_addr = "0.0.0.0:3000"
 enable_request_logging = false
 static_dir = "./static/"
+log_level = "warn"
 
 [oauth]
 

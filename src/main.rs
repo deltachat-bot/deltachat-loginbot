@@ -6,15 +6,17 @@ use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 use std::time::Duration;
+use std::str::FromStr;
 
 use anyhow::Context as _;
 use base64::Engine;
-use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionStatus};
+use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionStatus, send_msg};
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
 use deltachat::securejoin::get_securejoin_qr;
 use deltachat::qr_code_generator::get_securejoin_qr_svg;
+use deltachat::message::{Message, Viewtype};
 use tide::log;
 use tide::prelude::*;
 use tide::sessions::{MemoryStore, SessionMiddleware};
@@ -44,7 +46,6 @@ struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    femme::with_level(femme::LevelFilter::Info);
     let botconfig: BotConfig;
     {
         let mut config_file_path = current_dir()
@@ -55,7 +56,14 @@ async fn main() -> anyhow::Result<()> {
         }
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
-
+    let level: String = botconfig.log_level.clone().unwrap_or("warn".to_string());
+    if let Ok(level) = femme::LevelFilter::from_str(&level) {
+        femme::with_level(level);
+        println!("Starting logging with {} level", level);
+    } else {
+        femme::with_level(femme::LevelFilter::Warn);
+        println!("No log level provided, thus logging with WARN level");
+    }
     log::info!("Starting the bot. Address: {}", botconfig.email);
     log::info!("Open bot db");
     let db = sled::open(&botconfig.oauth_db)?;
@@ -214,9 +222,13 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
                         0
                     }
                 };
+                {
+                    let mut msg = Message::new(Viewtype::Text);
+                    msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
+                    send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
+                }
                 req.session_mut()
                     .insert("contact_id", chat_members[i].to_u32())?;
-                // TODO: say bye and leave
 
                 Ok(Response::builder(200)
                     .body(Body::from_json(&json!({"success": true}))?)
