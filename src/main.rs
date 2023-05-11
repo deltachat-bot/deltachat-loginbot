@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     let level: String = botconfig.log_level.clone().unwrap_or("warn".to_string());
     if let Ok(level) = femme::LevelFilter::from_str(&level) {
         femme::with_level(level);
-        println!("Starting logging with {} level", level);
+        println!("Starting logging with {level} level");
     } else {
         femme::with_level(femme::LevelFilter::Warn);
         println!("No log level provided, thus logging with WARN level");
@@ -187,7 +187,7 @@ async fn requestqr_fn(mut req: Request<State>) -> tide::Result {
 }
 
 async fn requestqr_svg_check_fn(req: Request<State>) -> tide::Result {
-    if let Some(_) = req.session().get::<u32>("group_id") {
+    if req.session().get::<u32>("group_id").is_some() {
         Ok(Response::builder(200).body(Body::empty()).build())
     } else {
         Ok(Response::builder(400).body(Body::empty()).build())
@@ -305,7 +305,7 @@ async fn token_fn(mut req: Request<State>) -> tide::Result {
                 base64::engine::general_purpose::STANDARD.decode(auth.replacen("Basic ", "", 1))?;
             let decoded = String::from_utf8(decoded)?;
             log::debug!("/token Decoded auth header into utf8: {decoded}");
-            let decoded: Vec<&str> = decoded.split(":").collect();
+            let decoded: Vec<&str> = decoded.split(':').collect();
             if decoded.len() < 2 {
                 log::info!("/token Not enough tokens in the decoded Auth header");
                 return Ok(Response::builder(400).build());
