@@ -222,11 +222,13 @@ async fn check_status_fn(mut req: Request<State>) -> tide::Result {
                         0
                     }
                 };
-                /*
-                let mut msg = Message::new(Viewtype::Text);
-                msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
-                send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
-                */
+                let another_context = dc_context.clone();
+                let rt = tokio::runtime::Runtime::new()?;
+                rt.block_on(async {
+                    let mut msg = Message::new(Viewtype::Text);
+                    msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
+                    return send_msg(&another_context, ChatId::new(group_id), &mut msg).await;
+                })?;
                 req.session_mut()
                     .insert("contact_id", chat_members[i].to_u32())?;
 
