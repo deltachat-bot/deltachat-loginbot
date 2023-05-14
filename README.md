@@ -4,6 +4,13 @@ This is an OAuth2 API provider for DeltaChat. OAuth2 is one of the APIs behind t
 
 This loginbot provides a [DeltaChat bot](https://delta.chat) and a web API so that users can login with their DeltaChat account.
 
+## What is the principle behind "Login with DeltaChat"?
+"Login with DeltaChat" uses the Secure join protocol to authenticate a user.
+
+When you visit the site and you are not logged in you get the login page, where you are prompted to scan the deltachat qr code to login, which is internally just a deltachat group invite, once you join the group the bot knows who you are (no extra email verfification needed, because emails were already exchanged in this process). Your session is now authenticated.
+
+In our case of this login bot the website you access is an oauth2 provider, so you can use this as login method for all kinds of web-apps like discourse or wikijs which both have a generic OAuth2 authentication module.
+
 ## How does it work?
 
 1. The front-end first sends a GET request to the `/requestQr` API of this loginbot to create and get an invite to a DeltaChat group.
