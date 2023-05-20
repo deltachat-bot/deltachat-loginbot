@@ -1,4 +1,4 @@
-use tide::prelude::*;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct AuthorizeQuery {
