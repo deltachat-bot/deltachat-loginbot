@@ -289,6 +289,7 @@ async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State
 }
 
 async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuery>, TypedHeader(auth): TypedHeader<Authorization<Basic>>, Form(form): Form<TokenQuery>) -> Result<(StatusCode, Json<Value>), AppError> {
+    // ^ remember that the Form extractor must be the last one
     let code: Option<String> = {
         if queries.code.is_none() {
             form.code
