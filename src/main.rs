@@ -25,10 +25,9 @@ use axum::{
     routing::{get, post, head},
     http::StatusCode,
     body::Bytes,
-    extract::{Query, State, Form},
+    extract::{Query, State, Form, TypedHeader},
     Router,
     response::{IntoResponse, Response, Redirect, Html},
-    extract::TypedHeader,
     headers::{ContentType, Authorization, authorization::Basic},
     Json,
 };
@@ -140,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/", get(index))
         // This endpoint is there only for debugging the web API. Like if there is connection to it or
         // not.
-        //.route("/authorize", get(authorize_fn))
+        .route("/authorize", get(authorize_fn))
         // Authorize API which is called the first time and shows the login screen
         // If the authorization is done, this API redirects to the specified redirect URI specified in
         // the web APIs config(e.g. the discouse callback API) rather than showing the llogin screen.
@@ -289,10 +288,10 @@ async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State
     }
 }
 
-async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuery>, Form(form_input): Form<TokenQuery>, TypedHeader(auth): TypedHeader<Authorization<Basic>>) -> Result<(StatusCode, Json<Value>), AppError> {
+async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuery>, TypedHeader(auth): TypedHeader<Authorization<Basic>>, Form(form): Form<TokenQuery>) -> Result<(StatusCode, Json<Value>), AppError> {
     let code: Option<String> = {
         if queries.code.is_none() {
-            form_input.code
+            form.code
         } else {
             queries.code
         }
