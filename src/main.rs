@@ -6,10 +6,8 @@ use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 use std::str::FromStr;
-use std::sync::Arc;
 
-use anyhow::{Context as _, Error, bail};
-use base64::Engine;
+use anyhow::{Context as _, Error};
 use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionStatus, send_msg};
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
@@ -18,7 +16,6 @@ use deltachat::securejoin::get_securejoin_qr;
 use deltachat::qr_code_generator::get_securejoin_qr_svg;
 use deltachat::message::{Message, Viewtype};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use axum::{
@@ -31,7 +28,7 @@ use axum::{
     headers::{ContentType, Authorization, authorization::Basic},
     Json,
 };
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use axum_sessions::{
     async_session::MemoryStore,
     extractors::{ReadableSession, WritableSession},
@@ -136,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
     let store = MemoryStore::new();
     let session_layer = SessionLayer::new(store, &secret);
     let backend = Router::new()
-        .route("/", get(index))
+        //.route("/", get(index))
         // This endpoint is there only for debugging the web API. Like if there is connection to it or
         // not.
         .route("/authorize", get(authorize_fn))
@@ -242,10 +239,13 @@ async fn check_status_fn(State(state): State<AppState>, mut session: WritableSes
                         0
                     }
                 };
-                let mut msg = Message::new(Viewtype::Text);
-                msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
-                send_msg(&dc_context, ChatId::new(group_id), &mut msg).await?;
-                session.insert("contact_id", chat_members[i].to_u32())?;
+                if !session.get::<bool>("sent").unwrap_or(false) {
+                    let mut msg = Message::new(Viewtype::Text);
+                    msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
+                    send_msg(&dc_context, ChatId::new(group_id), &mut msg).await?;
+                    session.insert("contact_id", chat_members[i].to_u32())?;
+                    session.insert("sent", true)?;
+                }
                 Ok((StatusCode::OK, Json(json!({ "success": true }))))
             }
             _number_of_members => {
@@ -259,7 +259,7 @@ async fn check_status_fn(State(state): State<AppState>, mut session: WritableSes
 }
 
 async fn webhook_fn() -> &'static str {
-    ""
+    "ola"
 }
 
 async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State<AppState>, session: ReadableSession) -> Result<Response, AppError> {
@@ -284,7 +284,7 @@ async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State
             queries.redirect_uri, queries.state)).into_response())
     } else {
         //log::info!("/authorize showing login screen");
-        Ok(Redirect::temporary("/login").into_response())
+        Ok(Html::from(String::from_utf8(read(Path::new(&state.config.static_dir.unwrap_or("./static/".to_string())).join("login.html"))?)?).into_response())
     }
 }
 
