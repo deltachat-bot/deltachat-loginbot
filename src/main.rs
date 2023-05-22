@@ -28,7 +28,11 @@ use axum::{
     headers::{ContentType, Authorization, authorization::Basic},
     Json,
 };
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::{
+    services::ServeDir,
+    trace::TraceLayer,
+};
+use tower::ServiceBuilder;
 use axum_sessions::{
     async_session::MemoryStore,
     extractors::{ReadableSession, WritableSession},
@@ -86,6 +90,8 @@ async fn main() -> anyhow::Result<()> {
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
     let level: String = botconfig.log_level.clone().unwrap_or("warn".to_string());
+    tracing_subscriber::fmt::init();
+    /*
     if let Ok(level) = femme::LevelFilter::from_str(&level) {
         femme::with_level(level);
         println!("Starting logging with {level} level");
@@ -93,15 +99,12 @@ async fn main() -> anyhow::Result<()> {
         femme::with_level(femme::LevelFilter::Warn);
         println!("No log level provided, thus logging with WARN level");
     }
-    //log::info!("Starting the bot. Address: {}", botconfig.email);
-    //log::info!("Open bot db");
+    */
     let db = sled::open(&botconfig.oauth_db)?;
-    //log::info!("Open deltachat context");
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
         .await
         .context("Creating context failed")?;
-    /*
     let dc_events = ctx.get_event_emitter();
     let dc_event_task = tokio::spawn(async move {
         while let Some(event) = dc_events.recv().await {
@@ -114,7 +117,6 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
-    */
     let state: AppState = AppState {
         db,
         dc_context: ctx.clone(),
@@ -135,9 +137,6 @@ async fn main() -> anyhow::Result<()> {
     let store = MemoryStore::new();
     let session_layer = SessionLayer::new(store, &secret);
     let backend = Router::new()
-        //.route("/", get(index))
-        // This endpoint is there only for debugging the web API. Like if there is connection to it or
-        // not.
         .route("/authorize", get(authorize_fn))
         // Authorize API which is called the first time and shows the login screen
         // If the authorization is done, this API redirects to the specified redirect URI specified in
@@ -163,11 +162,12 @@ async fn main() -> anyhow::Result<()> {
         .nest_service("/", ServeDir::new(botconfig.static_dir.unwrap_or("./static".to_string())))
         // This is for static files. See the function to see a list of files.
         .with_state(state)
-        .layer(session_layer);
+        .layer(session_layer)
+        .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()));
 
 
     if !ctx.get_config_bool(Config::Configured).await? {
-        //log::info!("Configure deltachat context");
+        log::info!("Configure deltachat context");
         ctx.set_config(Config::Addr, Some(botconfig.email.clone().as_str()))
             .await?;
         ctx.set_config(Config::MailPw, Some(botconfig.password.clone().as_str()))
@@ -177,19 +177,14 @@ async fn main() -> anyhow::Result<()> {
         ctx.configure().await.context("configuration failed...")?;
     }
     // connect to email server
-    //log::info!("Serving static files from {}", botconfig.static_dir.unwrap_or("./static/".to_string()));
+    //log::info!("Serving static files from {}", &botconfig.static_dir.unwrap_or("./static/".to_string()));
     ctx.start_io().await;
     axum::Server::bind(&botconfig.listen_addr.parse()?).serve(backend.into_make_service()).await?;
-    //backend.listen(botconfig.listen_addr.clone()).await?;
     tokio::signal::ctrl_c().await?;
-    //log::info!("Shutting Down");
+    log::info!("Shutting Down");
     ctx.stop_io().await;
-    //dc_event_task.await?;
+    dc_event_task.await?;
     Ok(())
-}
-
-async fn index() -> Html<&'static str> {
-    Html("A loginbot instance is running here")
 }
 
 async fn requestqr_fn(State(state): State<AppState>, mut session: WritableSession) -> Result<(StatusCode, Json<Value>), AppError> {
@@ -229,7 +224,7 @@ async fn requestqr_svg_fn(State(state): State<AppState>, session: ReadableSessio
 async fn check_status_fn(State(state): State<AppState>, mut session: WritableSession) -> Result<(StatusCode, Json<Value>), AppError> {
     if let Some(group_id) = session.get::<u32>("group_id") {
         let dc_context = &state.dc_context;
-        //log::info!("/checkStatus Getting chat members for group {group_id}");
+        log::info!("/checkStatus Getting chat members for group {group_id}");
         let chat_members = get_chat_contacts(dc_context, ChatId::new(group_id)).await?;
         match chat_members.len() {
             1 => Ok((StatusCode::OK, Json(json!({ "waiting": true })))),
@@ -250,8 +245,8 @@ async fn check_status_fn(State(state): State<AppState>, mut session: WritableSes
                 }
                 Ok((StatusCode::OK, Json(json!({ "success": true }))))
             }
-            _number_of_members => {
-                //log::error!("{}", format!("/checkStatus This must not happen. There is/are {number_of_members} in the group {group_id}"));
+            number_of_members => {
+                log::error!("{}", format!("/checkStatus This must not happen. There is/are {number_of_members} in the group {group_id}"));
                 Err(AppError(Error::msg(format!("Error! number of chat member {} is not 1 or 2", group_id))))
             }
         }
@@ -267,11 +262,11 @@ async fn webhook_fn() -> &'static str {
 async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State<AppState>, session: ReadableSession) -> Result<Response, AppError> {
     let config = &state.config;
     if queries.client_id != config.oauth.client_id {
-        //log::info!("/authorize Invalid client_id: {}", queries.client_id);
+        log::info!("/authorize Invalid client_id: {}", queries.client_id);
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
     if queries.redirect_uri != config.oauth.redirect_uri {
-        //log::info!("/authorize Invalid redirect_uri: {}", queries.redirect_uri);
+        log::info!("/authorize Invalid redirect_uri: {}", queries.redirect_uri);
         return Ok(StatusCode::BAD_REQUEST.into_response());
     }
     let auth_code: String = uuid::Uuid::new_v4().simple().to_string();
@@ -280,12 +275,12 @@ async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State
         tree.insert(&auth_code, &contact_id.to_le_bytes())?;
         tree.insert(contact_id.to_le_bytes(), &*auth_code)?;
         // is it really required to save both pairs?
-        //log::info!("/authorize Redirected");
+        log::info!("/authorize Redirected");
         Ok(Redirect::temporary(&format!(
             "{}?state={}&code={auth_code}",
             queries.redirect_uri, queries.state)).into_response())
     } else {
-        //log::info!("/authorize showing login screen");
+        log::info!("/authorize showing login screen");
         Ok(Html::from(state.login_html).into_response())
     }
 }
@@ -303,15 +298,15 @@ async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuer
         let client_id: &str = auth.username();
         let client_secret: &str = auth.password();
         if client_id != state.config.oauth.client_id {
-            //log::info!("/token returned 401 because client_ids were inconsistent");
+            log::info!("/token returned 401 because client_ids were inconsistent");
             return Ok((StatusCode::UNAUTHORIZED, Json(json!( { "error": "incorrect client secret" }))));
         }
         if client_secret != state.config.oauth.client_secret {
-            //log::info!("/token returned 401 because client_secrets were inconsistent");
+            log::info!("/token returned 401 because client_secrets were inconsistent");
             return Ok((StatusCode::UNAUTHORIZED, Json(json!( { "error": "incorrect client secret" }))));
         }
         let tree = state.db.open_tree("default")?;
-        //log::debug!("/token Opened default tree in sled");
+        log::debug!("/token Opened default tree in sled");
         if let Some(data) = tree.get(code)? {
             let user = Contact::load_from_db(
                 &state.dc_context,
@@ -332,9 +327,9 @@ async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuer
                     }
                 }))));
         }
-        //log::info!("/token Returning 401 because there is no auth header");
+        log::info!("/token Returning 401 because there is no auth header");
         return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "error": "no auth header"}))));
     }
-    //log::info!("/token returned 400 because there was not 'code' in queries");
+    log::info!("/token returned 400 because there was not 'code' in queries");
     Ok((StatusCode::BAD_REQUEST, Json(json!({ "error": "no code in form data nor string queries" }))))
 }
