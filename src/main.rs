@@ -55,6 +55,7 @@ struct AppState {
     db: sled::Db,
     dc_context: Context,
     config: BotConfig,
+    login_html: String,
 }
 
 struct AppError(Error);
@@ -118,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         dc_context: ctx.clone(),
         config: botconfig.clone(),
+        login_html: String::from_utf8(read(Path::new(&botconfig.static_dir.clone().unwrap_or("./static/".to_string())).join("login.html"))?)?,
     };
     /*
     if botconfig.enable_request_logging == Some(true) {
@@ -207,7 +209,7 @@ async fn requestqr_fn(State(state): State<AppState>, mut session: WritableSessio
     Ok((StatusCode::OK, Json(json!({ "link": get_securejoin_qr(&state.dc_context, Some(group)).await? }))))
 }
 
-async fn requestqr_svg_check_fn(State(state): State<AppState>, session: ReadableSession) -> StatusCode {
+async fn requestqr_svg_check_fn(session: ReadableSession) -> StatusCode {
     if session.get::<u32>("group_id").is_some() {
         StatusCode::OK
     } else {
@@ -284,7 +286,7 @@ async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State
             queries.redirect_uri, queries.state)).into_response())
     } else {
         //log::info!("/authorize showing login screen");
-        Ok(Html::from(String::from_utf8(read(Path::new(&state.config.static_dir.unwrap_or("./static/".to_string())).join("login.html"))?)?).into_response())
+        Ok(Html::from(state.login_html).into_response())
     }
 }
 
