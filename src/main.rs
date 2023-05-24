@@ -5,6 +5,8 @@ use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
+use std::str::FromStr;
+use std::time::Duration;
 
 use anyhow::{Context as _, Error};
 use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionStatus, send_msg};
@@ -89,16 +91,7 @@ async fn main() -> anyhow::Result<()> {
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
     let level: String = botconfig.log_level.clone().unwrap_or("warn".to_string());
-    tracing_subscriber::fmt::init();
-    /*
-    if let Ok(level) = femme::LevelFilter::from_str(&level) {
-        femme::with_level(level);
-        println!("Starting logging with {level} level");
-    } else {
-        femme::with_level(femme::LevelFilter::Warn);
-        println!("No log level provided, thus logging with WARN level");
-    }
-    */
+    tracing_subscriber::fmt().with_max_level(tracing::Level::from_str(&level).unwrap_or(tracing::Level::WARN)).init();
     let db = sled::open(&botconfig.oauth_db)?;
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
@@ -134,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
         secret
     };
     let store = MemoryStore::new();
-    let session_layer = SessionLayer::new(store, &secret);
+    let session_layer = SessionLayer::new(store, &secret).with_session_ttl(Some(Duration::from_secs(SESSION_EXPIRY_IN_SECONDS)));
     let backend = Router::new()
         .route("/authorize", get(authorize_fn))
         // Authorize API which is called the first time and shows the login screen
