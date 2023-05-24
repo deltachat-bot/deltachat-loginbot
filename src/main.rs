@@ -5,7 +5,6 @@ use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
-use std::str::FromStr;
 
 use anyhow::{Context as _, Error};
 use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionStatus, send_msg};
@@ -239,7 +238,7 @@ async fn check_status_fn(State(state): State<AppState>, mut session: WritableSes
                 if !session.get::<bool>("sent").unwrap_or(false) {
                     let mut msg = Message::new(Viewtype::Text);
                     msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
-                    send_msg(&dc_context, ChatId::new(group_id), &mut msg).await?;
+                    send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
                     session.insert("contact_id", chat_members[i].to_u32())?;
                     session.insert("sent", true)?;
                 }
@@ -247,7 +246,7 @@ async fn check_status_fn(State(state): State<AppState>, mut session: WritableSes
             }
             number_of_members => {
                 log::error!("{}", format!("/checkStatus This must not happen. There is/are {number_of_members} in the group {group_id}"));
-                Err(AppError(Error::msg(format!("Error! number of chat member {} is not 1 or 2", group_id))))
+                Err(AppError(Error::msg(format!("Error! number of chat member {group_id} is not 1 or 2"))))
             }
         }
     } else {
