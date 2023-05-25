@@ -9,37 +9,33 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{Context as _, Error};
-use deltachat::chat::{create_group_chat, get_chat_contacts, ChatId, ProtectionStatus, send_msg};
+use deltachat::chat::{create_group_chat, get_chat_contacts, send_msg, ChatId, ProtectionStatus};
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
-use deltachat::securejoin::get_securejoin_qr;
-use deltachat::qr_code_generator::get_securejoin_qr_svg;
 use deltachat::message::{Message, Viewtype};
+use deltachat::qr_code_generator::get_securejoin_qr_svg;
+use deltachat::securejoin::get_securejoin_qr;
 use rand::RngCore;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use axum::{
-    routing::{get, post, head},
-    http::StatusCode,
     body::Bytes,
-    extract::{Query, State, Form, TypedHeader},
-    Router,
-    response::{IntoResponse, Response, Redirect, Html},
-    headers::{ContentType, Authorization, authorization::Basic},
-    Json,
+    extract::{Form, Query, State, TypedHeader},
+    headers::{authorization::Basic, Authorization, ContentType},
+    http::StatusCode,
+    response::{Html, IntoResponse, Redirect, Response},
+    routing::{get, head, post},
+    Json, Router,
 };
-use tower_http::{
-    services::ServeDir,
-    trace::TraceLayer,
-};
-use tower::ServiceBuilder;
 use axum_sessions::{
     async_session::MemoryStore,
     extractors::{ReadableSession, WritableSession},
     SessionLayer,
 };
 use mime::Mime;
+use tower::ServiceBuilder;
+use tower_http::{services::ServeDir, trace::TraceLayer};
 
 use crate::config::BotConfig;
 use crate::queries::*;
@@ -72,7 +68,9 @@ impl IntoResponse for AppError {
 }
 
 impl<E> From<E> for AppError
-where E: Into<Error> {
+where
+    E: Into<Error>,
+{
     fn from(err: E) -> Self {
         Self(err.into())
     }
@@ -91,7 +89,9 @@ async fn main() -> anyhow::Result<()> {
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
     let level: String = botconfig.log_level.clone().unwrap_or("warn".to_string());
-    tracing_subscriber::fmt().with_max_level(tracing::Level::from_str(&level).unwrap_or(tracing::Level::WARN)).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::from_str(&level).unwrap_or(tracing::Level::WARN))
+        .init();
     let db = sled::open(&botconfig.oauth_db)?;
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
@@ -113,7 +113,15 @@ async fn main() -> anyhow::Result<()> {
         db,
         dc_context: ctx.clone(),
         config: botconfig.clone(),
-        login_html: String::from_utf8(read(Path::new(&botconfig.static_dir.clone().unwrap_or("./static/".to_string())).join("login.html"))?)?,
+        login_html: String::from_utf8(read(
+            Path::new(
+                &botconfig
+                    .static_dir
+                    .clone()
+                    .unwrap_or("./static/".to_string()),
+            )
+            .join("login.html"),
+        )?)?,
     };
     /*
     if botconfig.enable_request_logging == Some(true) {
@@ -127,7 +135,8 @@ async fn main() -> anyhow::Result<()> {
         secret
     };
     let store = MemoryStore::new();
-    let session_layer = SessionLayer::new(store, &secret).with_session_ttl(Some(Duration::from_secs(SESSION_EXPIRY_IN_SECONDS)));
+    let session_layer = SessionLayer::new(store, &secret)
+        .with_session_ttl(Some(Duration::from_secs(SESSION_EXPIRY_IN_SECONDS)));
     let backend = Router::new()
         .route("/authorize", get(authorize_fn))
         // Authorize API which is called the first time and shows the login screen
@@ -151,12 +160,14 @@ async fn main() -> anyhow::Result<()> {
         // This is called on an interval(5s?) by the /authorize login page to see if the user has
         // joined the group created by /requestQr which means they have authenticated with their email
         // address.
-        .nest_service("/", ServeDir::new(botconfig.static_dir.unwrap_or("./static".to_string())))
+        .nest_service(
+            "/",
+            ServeDir::new(botconfig.static_dir.unwrap_or("./static".to_string())),
+        )
         // This is for static files. See the function to see a list of files.
         .with_state(state)
         .layer(session_layer)
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()));
-
 
     if !ctx.get_config_bool(Config::Configured).await? {
         log::info!("Configure deltachat context");
@@ -171,7 +182,9 @@ async fn main() -> anyhow::Result<()> {
     // connect to email server
     //log::info!("Serving static files from {}", &botconfig.static_dir.unwrap_or("./static/".to_string()));
     ctx.start_io().await;
-    axum::Server::bind(&botconfig.listen_addr.parse()?).serve(backend.into_make_service()).await?;
+    axum::Server::bind(&botconfig.listen_addr.parse()?)
+        .serve(backend.into_make_service())
+        .await?;
     tokio::signal::ctrl_c().await?;
     log::info!("Shutting Down");
     ctx.stop_io().await;
@@ -179,7 +192,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn requestqr_fn(State(state): State<AppState>, mut session: WritableSession) -> Result<(StatusCode, Json<Value>), AppError> {
+async fn requestqr_fn(
+    State(state): State<AppState>,
+    mut session: WritableSession,
+) -> Result<(StatusCode, Json<Value>), AppError> {
     let group = {
         if let Some(group_id) = session.get::<u32>("group_id") {
             ChatId::new(group_id)
@@ -188,12 +204,16 @@ async fn requestqr_fn(State(state): State<AppState>, mut session: WritableSessio
             uuid.truncate(5);
             let group_name = format!("LoginBot group {uuid}");
             let group =
-                create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name).await?;
+                create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name)
+                    .await?;
             session.insert("group_id", group.to_u32())?;
             group
         }
     };
-    Ok((StatusCode::OK, Json(json!({ "link": get_securejoin_qr(&state.dc_context, Some(group)).await? }))))
+    Ok((
+        StatusCode::OK,
+        Json(json!({ "link": get_securejoin_qr(&state.dc_context, Some(group)).await? })),
+    ))
 }
 
 async fn requestqr_svg_check_fn(session: ReadableSession) -> StatusCode {
@@ -204,16 +224,30 @@ async fn requestqr_svg_check_fn(session: ReadableSession) -> StatusCode {
     }
 }
 
-async fn requestqr_svg_fn(State(state): State<AppState>, session: ReadableSession) -> Result<(StatusCode, TypedHeader<ContentType>, Bytes), AppError> {
+async fn requestqr_svg_fn(
+    State(state): State<AppState>,
+    session: ReadableSession,
+) -> Result<(StatusCode, TypedHeader<ContentType>, Bytes), AppError> {
     if let Some(group_id) = session.get::<u32>("group_id") {
         let qr = get_securejoin_qr_svg(&state.dc_context, Some(ChatId::new(group_id))).await?;
-        Ok((StatusCode::OK, TypedHeader(ContentType::from("image/svg+xml".parse::<Mime>()?)), Bytes::from(qr)))
+        Ok((
+            StatusCode::OK,
+            TypedHeader(ContentType::from("image/svg+xml".parse::<Mime>()?)),
+            Bytes::from(qr),
+        ))
     } else {
-        Ok((StatusCode::BAD_REQUEST, TypedHeader(ContentType::text()), Bytes::new()))
+        Ok((
+            StatusCode::BAD_REQUEST,
+            TypedHeader(ContentType::text()),
+            Bytes::new(),
+        ))
     }
 }
 
-async fn check_status_fn(State(state): State<AppState>, mut session: WritableSession) -> Result<(StatusCode, Json<Value>), AppError> {
+async fn check_status_fn(
+    State(state): State<AppState>,
+    mut session: WritableSession,
+) -> Result<(StatusCode, Json<Value>), AppError> {
     if let Some(group_id) = session.get::<u32>("group_id") {
         let dc_context = &state.dc_context;
         log::info!("/checkStatus Getting chat members for group {group_id}");
@@ -239,11 +273,18 @@ async fn check_status_fn(State(state): State<AppState>, mut session: WritableSes
             }
             number_of_members => {
                 log::error!("{}", format!("/checkStatus This must not happen. There is/are {number_of_members} in the group {group_id}"));
-                Err(AppError(Error::msg(format!("Error! number of chat member {group_id} is not 1 or 2"))))
+                Err(AppError(Error::msg(format!(
+                    "Error! number of chat member {group_id} is not 1 or 2"
+                ))))
             }
         }
     } else {
-        Ok((StatusCode::OK, Json(json!({ "error": "you need to start the login process first, via /requestQr".to_owned()}))))
+        Ok((
+            StatusCode::OK,
+            Json(
+                json!({ "error": "you need to start the login process first, via /requestQr".to_owned()}),
+            ),
+        ))
     }
 }
 
@@ -251,7 +292,11 @@ async fn webhook_fn() -> &'static str {
     "ola"
 }
 
-async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State<AppState>, session: ReadableSession) -> Result<Response, AppError> {
+async fn authorize_fn(
+    Query(queries): Query<AuthorizeQuery>,
+    State(state): State<AppState>,
+    session: ReadableSession,
+) -> Result<Response, AppError> {
     let config = &state.config;
     if queries.client_id != config.oauth.client_id {
         log::info!("/authorize Invalid client_id: {}", queries.client_id);
@@ -270,14 +315,21 @@ async fn authorize_fn(Query(queries): Query<AuthorizeQuery>, State(state): State
         log::info!("/authorize Redirected");
         Ok(Redirect::temporary(&format!(
             "{}?state={}&code={auth_code}",
-            queries.redirect_uri, queries.state)).into_response())
+            queries.redirect_uri, queries.state
+        ))
+        .into_response())
     } else {
         log::info!("/authorize showing login screen");
         Ok(Html::from(state.login_html).into_response())
     }
 }
 
-async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuery>, TypedHeader(auth): TypedHeader<Authorization<Basic>>, Form(form): Form<TokenQuery>) -> Result<(StatusCode, Json<Value>), AppError> {
+async fn token_fn(
+    State(state): State<AppState>,
+    Query(queries): Query<TokenQuery>,
+    TypedHeader(auth): TypedHeader<Authorization<Basic>>,
+    Form(form): Form<TokenQuery>,
+) -> Result<(StatusCode, Json<Value>), AppError> {
     // ^ remember that the Form extractor must be the last one
     let code: Option<String> = {
         if queries.code.is_none() {
@@ -291,11 +343,17 @@ async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuer
         let client_secret: &str = auth.password();
         if client_id != state.config.oauth.client_id {
             log::info!("/token returned 401 because client_ids were inconsistent");
-            return Ok((StatusCode::UNAUTHORIZED, Json(json!( { "error": "incorrect client secret" }))));
+            return Ok((
+                StatusCode::UNAUTHORIZED,
+                Json(json!( { "error": "incorrect client secret" })),
+            ));
         }
         if client_secret != state.config.oauth.client_secret {
             log::info!("/token returned 401 because client_secrets were inconsistent");
-            return Ok((StatusCode::UNAUTHORIZED, Json(json!( { "error": "incorrect client secret" }))));
+            return Ok((
+                StatusCode::UNAUTHORIZED,
+                Json(json!( { "error": "incorrect client secret" })),
+            ));
         }
         let tree = state.db.open_tree("default")?;
         log::debug!("/token Opened default tree in sled");
@@ -308,7 +366,9 @@ async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuer
                 // in /authorize as well
             )
             .await?;
-            return Ok((StatusCode::OK, Json(json!({ 
+            return Ok((
+                StatusCode::OK,
+                Json(json!({
 
                     "access_token": uuid::Uuid::new_v4().to_string(),
                     "token_type": "bearer",
@@ -317,11 +377,18 @@ async fn token_fn(State(state): State<AppState>, Query(queries): Query<TokenQuer
                         "username": user.get_name(),
                         "email": user.get_addr(),
                     }
-                }))));
+                })),
+            ));
         }
         log::info!("/token Returning 401 because there is no auth header");
-        return Ok((StatusCode::UNAUTHORIZED, Json(json!({ "error": "no auth header"}))));
+        return Ok((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "no auth header"})),
+        ));
     }
     log::info!("/token returned 400 because there was not 'code' in queries");
-    Ok((StatusCode::BAD_REQUEST, Json(json!({ "error": "no code in form data nor string queries" }))))
+    Ok((
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "error": "no code in form data nor string queries" })),
+    ))
 }
