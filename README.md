@@ -22,7 +22,7 @@ In our case of this login bot, the website you access is an OAuth2 provider. So 
 
 ## Technologies used
 
- - [tide](https://github.com/http-rs/tide) for the web API part
+ - [axum](https://github.com/tokio-rs/axum) for the web API part
  - [DeltaChat core](https://github.com/deltachat/deltachat-core-rust)
  - [sled-rs](https://sled.rs/) as the Key-Value database
  - TOML for the config file
