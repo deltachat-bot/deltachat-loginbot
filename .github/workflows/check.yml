@@ -1,0 +1,24 @@
+name: Checking formatting and idiomatic-ness of Rust code
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Check
+      run: cargo check
+    - name: Check formatting
+      run: cargo fmt --check
+    - name: Check idiomatic-ness
+      run: cargo clippy
