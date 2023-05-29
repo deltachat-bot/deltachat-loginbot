@@ -14,6 +14,7 @@
 
 mod config;
 mod queries;
+mod shutdown_signal;
 
 use std::env::{args, current_dir};
 use std::fs::read;
@@ -196,13 +197,13 @@ async fn main() -> anyhow::Result<()> {
     //log::info!("Serving static files from {}", &botconfig.static_dir.unwrap_or("./static/".to_string()));
     // connect to email server
     ctx.start_io().await;
-    axum::Server::bind(&botconfig.listen_addr.parse()?)
+    hyper::Server::bind(&botconfig.listen_addr.parse()?)
         .serve(backend.into_make_service())
+        .with_graceful_shutdown(shutdown_signal::shutdown_signal())
         .await?;
-    tokio::signal::ctrl_c().await?;
     log::info!("Shutting Down");
     ctx.stop_io().await;
-    dc_event_task.await?;
+    dc_event_task.abort();
     Ok(())
 }
 
