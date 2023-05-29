@@ -1,3 +1,17 @@
+#![warn(
+    unused,
+    clippy::correctness,
+    missing_debug_implementations,
+    // missing_docs,
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::wildcard_imports,
+    clippy::needless_borrow,
+    clippy::cast_lossless,
+    clippy::unused_async
+)]
+#![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::expect_used))]
+
 mod config;
 mod queries;
 
@@ -81,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
     let botconfig: BotConfig;
     {
         let mut config_file_path = current_dir()
-            .expect("Cannot get current directory")
+            .context("Cannot get current directory")?
             .join("config.toml");
         if let Some(arg) = args().nth(1) {
             config_file_path = PathBuf::from(arg);
@@ -141,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/authorize", get(authorize_fn))
         // Authorize API which is called the first time and shows the login screen
         // If the authorization is done, this API redirects to the specified redirect URI specified in
-        // the web APIs config(e.g. the discouse callback API) rather than showing the llogin screen.
+        // the web APIs config(e.g. the discouse callback API) rather than showing the login screen.
         .route("/token", post(token_fn))
         // Token API is called by the OAuth2(e.g. Discourse) to see if the user
         // has been authenticated by us.
@@ -179,8 +193,8 @@ async fn main() -> anyhow::Result<()> {
         ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
     }
-    // connect to email server
     //log::info!("Serving static files from {}", &botconfig.static_dir.unwrap_or("./static/".to_string()));
+    // connect to email server
     ctx.start_io().await;
     axum::Server::bind(&botconfig.listen_addr.parse()?)
         .serve(backend.into_make_service())
@@ -216,6 +230,7 @@ async fn requestqr_fn(
     ))
 }
 
+#[allow(clippy::unused_async)]
 async fn requestqr_svg_check_fn(session: ReadableSession) -> StatusCode {
     if session.get::<u32>("group_id").is_some() {
         StatusCode::OK
@@ -256,7 +271,7 @@ async fn check_status_fn(
             1 => Ok((StatusCode::OK, Json(json!({ "waiting": true })))),
             2 => {
                 let i = {
-                    if chat_members[0] == deltachat::contact::ContactId::SELF {
+                    if chat_members.get(0).context("chat has no members")? == &deltachat::contact::ContactId::SELF {
                         1
                     } else {
                         0
@@ -266,7 +281,7 @@ async fn check_status_fn(
                     let mut msg = Message::new(Viewtype::Text);
                     msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
                     send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
-                    session.insert("contact_id", chat_members[i].to_u32())?;
+                    session.insert("contact_id", chat_members.get(i).context("can not get chat member")?.to_u32())?;
                     session.insert("sent", true)?;
                 }
                 Ok((StatusCode::OK, Json(json!({ "success": true }))))
@@ -288,10 +303,12 @@ async fn check_status_fn(
     }
 }
 
+#[allow(clippy::unused_async)]
 async fn webhook_fn() -> &'static str {
     "ola"
 }
 
+#[allow(clippy::unused_async)]
 async fn authorize_fn(
     Query(queries): Query<AuthorizeQuery>,
     State(state): State<AppState>,
