@@ -22,6 +22,11 @@
         evt.preventDefault();
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(document.getElementById("qr-content").href);
+          let formerText = evt.target.innerText;
+          evt.target.innerText = "Copied!";
+          setTimeout(() => {
+            evt.target.innerText = formerText;
+          }, 1500);
         } else {
           window.alert("Your browser does not support coping to clipboard :(");
         }
@@ -46,6 +51,8 @@
           if (response.ok) {
             document.getElementById("qr").src = "/requestQrSvg";
             document.getElementById("qr").classList.remove("hidden");
+            document.getElementById("copy-to-clipboard").classList.remove("hidden");
+            document.getElementById("copy-to-clipboard").classList.remove("clipboard-link");
             document.getElementById("loading").classList.add("hidden");
             clearInterval(requestQrSvgTimer);
           }
