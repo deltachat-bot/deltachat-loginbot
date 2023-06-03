@@ -968,8 +968,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "deltachat-discourse-loginbot"
-version = "0.1.0"
+name = "deltachat-loginbot"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
