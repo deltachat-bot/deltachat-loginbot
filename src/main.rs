@@ -271,7 +271,9 @@ async fn check_status_fn(
             1 => Ok((StatusCode::OK, Json(json!({ "waiting": true })))),
             2 => {
                 let i = {
-                    if chat_members.get(0).context("chat has no members")? == &deltachat::contact::ContactId::SELF {
+                    if chat_members.get(0).context("chat has no members")?
+                        == &deltachat::contact::ContactId::SELF
+                    {
                         1
                     } else {
                         0
@@ -281,7 +283,13 @@ async fn check_status_fn(
                     let mut msg = Message::new(Viewtype::Text);
                     msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
                     send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
-                    session.insert("contact_id", chat_members.get(i).context("can not get chat member")?.to_u32())?;
+                    session.insert(
+                        "contact_id",
+                        chat_members
+                            .get(i)
+                            .context("can not get chat member")?
+                            .to_u32(),
+                    )?;
                     session.insert("sent", true)?;
                 }
                 Ok((StatusCode::OK, Json(json!({ "success": true }))))
