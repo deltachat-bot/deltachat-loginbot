@@ -27,27 +27,6 @@ In our case of this login bot, the website you access is an OAuth2 provider. So 
  - [sled-rs](https://sled.rs/) as the Key-Value database
  - TOML for the config file
 
-## How to run it?
-
-### Pre-built binaries (only for Linux `x86_64` `musl`)
-
- - Download the latest release from Releases
- - Extract the compressed file
- - Modify the TOML config file to your need. You need an email account somewhere for the loginbot
- - The `oauth` section of the config file must be parallel with your website configuration.
- - Run the binary. By default it looks for The `oauth` section of the config file must be parallel with your website configuration.
- - Run the binary. By default, it looks for `config.toml` in the current directory but you can specify somewhere else by a command line argument: `./loginbot /path/to/config.toml`
- - For production runs, a service manager is highly recommended for easier management of the loginbot process. For instance on Debian based distros and many others, systemd is used.
- - There is no need for loginbot to be run as root. You can use systemd user services for instance.
- - The bot's web APIBy default, it looks for `config.toml` in the current directory but you can specify somewhere else by a command line argument: `./loginbot /path/to/config.toml`
- - For production runs, a service manager is highly recommended for easier management of the loginbot process. For instance on Debian based distros and many others, systemd is used.
- - There is no need for loginbot to be run as root. You can use systemd user services for instance.
- - The bot's web API is listening to `listen_addr` as specified in the config file. You need your webserver to act as a reverse proxy for the login bot.
-
-### Building from source
-
-TL;DR Clone this repo, checkout to latest release, compile using cargo and follow the points 3 and afterwards of the previous section
-
 ## License
 
 This project is under copyright of Farooq Karimi Zadeh and DeltaChat team. Some rights are reserved under Affero General Public License version 3 or at your option any later version as published by the Free Software Foundation. You should have received a copy of this license in the LICENSE file in this git repository.
