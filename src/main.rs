@@ -383,7 +383,7 @@ async fn token_fn(
         }
         let tree = state.db.open_tree("default")?;
         log::debug!("/token Opened default tree in sled");
-        if let Some(data) = tree.get(code)? {
+        if let Some(data) = tree.get(code.clone())? {
             let user = Contact::load_from_db(
                 &state.dc_context,
                 ContactId::new(u32::from_le_bytes(data[..].try_into()?)),
@@ -392,6 +392,14 @@ async fn token_fn(
                 // in /authorize as well
             )
             .await?;
+            tokio::spawn(async move {
+                if let Err(e) = tree.remove(data.clone()) {
+                    log::error!("{e}");
+                }
+                if let Err(e) = tree.remove(code.clone()) {
+                    log::error!("{e}");
+                }
+            });
             return Ok((
                 StatusCode::OK,
                 Json(json!({
