@@ -20,6 +20,10 @@ In our case of this login bot, the website you access is an OAuth2 provider. So 
 5. When the front-end gets the success message, it will open `/authorize` page in the user's browser from where they will be redirected to the website's(for example Discourse's) callback URL.
 6. Later, the website will check `/token` API in the login bot to check if the user has really authenticated themselves with our loginbot and that the call to its callback is not fake.
 
+## How to use it for Discourse?
+
+See DISCOURSE.md
+
 ## Technologies used
 
  - [axum](https://github.com/tokio-rs/axum) for the web API part
