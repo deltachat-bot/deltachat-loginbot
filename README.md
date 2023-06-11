@@ -14,7 +14,7 @@ In our case of this login bot, the website you access is an OAuth2 provider. So 
 
 ## How to run it?
 
-Currently, loginbot covers enough of OAuth2 specs to use it with Discourse. You can see the guide in DISCOURSE.md
+Currently, loginbot covers enough of OAuth2 specs to use it with Discourse. You can see the guide in [DISCOURSE.md](./DISCOURSE.md)
 
 ## How does it work?
 
