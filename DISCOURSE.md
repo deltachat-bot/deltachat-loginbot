@@ -19,22 +19,25 @@ to get an optimized release binary for your platform.
 
 ## Steps
 
- 1. Download the latest release from Releases and get the binary
- 2. Modify the TOML config file(`example_config.toml`) to your need. You need an email account somewhere for the loginbot
- 3. Use `bash gen_secret.sh` to generate two random strings for `client_id` and `client_secret` in `oauth` section of the config file.
- 4. Enter `https://discourse.tld/auth/oauth2_basic/callback` as `redirect_uri` where `discouse.tld` is the domain address of your Discourse.
- 5. Run the binary. By default, it looks for `config.toml` in the current directory but you can specify somewhere else by a command line argument: `./loginbot /path/to/config.toml`
- 6. For production runs, a service manager is highly recommended for easier management of the loginbot process. For instance on Debian based distros and many others, systemd is used.
- 7. The bot's web API is listening to `listen_addr` as specified in the config file. You need your webserver to act as a reverse proxy for the login bot.
- 8. In your Discourse instance, navigate to the admin panel. Then open Site settings and then "Login" section.
- 9. Tick `oauth2 enabled`
- 10. Enter the same `client_id` and `client_secret` which you've entered for the loginbot configuration file in `oauth` section.
- 11. In `oauth2 authorize url` you must enter the URL of `/authorize` endpoint of your loginbot. For instance if your loginbot web API is accessible from `https://foo.com/` then the authorize URL will be `https://foo.com/authorize`
- 12. Fill "oauth2 token url" like the authorize URL. E.g. `https://foo.com/token`
- 13. Select `POST` for `oauth2 token url method`. Currently `GET` method is NOT supported by loginbot for the `/token` endpoint.
- 14. Enter `params.info.email` as `oauth2 callback user id path`
- 15. Add `name:params.info.username` and `email:params.info.email` as items for `oauth2 callback user info paths`.
- 16. There are other stuff you can configure according to your need. You should look up Discourse docs for this. For example, `oauth2 button title` is the title of button the user sees. Like you can enter "Login with DeltaChat"
+The first step assumes you are on Linux and you are fine with a statically linked binary with musl libc.
+
+ 1. Download the latest release from Releases and get the binary: `wget https://github.com/deltachat-bot/deltachat-loginbot/releases/download/v0.3.0/deltachat-loginbot-x86_64-linux-musl_0.3.0.tar.bz2`
+ 2. Extract loginbot's binary and other stuff to an empty directory: `tar xvf deltachat-loginbot-x86_64-linux-musl_0.3.0.tar.bz2 -C empty_directory`
+ 3. Rename `example_config.toml` to `config.toml` and modify the TOML config file(`example_config.toml`) to your need. Enter email address and password respectively in `email` and `password` fields in `config.toml`
+ 4. Use `bash scripts/gen_secret.sh` to generate two random strings for `client_id` and `client_secret` in `oauth` section of the config file. Enter one of randomly generated strings in `client_id` field and the other in `client_secret` field.
+ 5. Enter `https://discourse.tld/auth/oauth2_basic/callback` as `redirect_uri` where `discouse.tld` is the domain address of your Discourse.
+ 6. Run the binary. By default, it looks for `config.toml` in the current directory but you can specify somewhere else by a command line argument: `./loginbot /path/to/config.toml`
+ 7. For production runs, a service manager is highly recommended for easier management of the loginbot process. For instance on Debian based distros and many others, systemd is used.
+ 8. The bot's web API is listening to `listen_addr` as specified in the config file. To see different possible values for `listen_addr` see [valid values for SocketAddr](https://doc.rust-lang.org/nightly/core/net/enum.SocketAddr.html). You need your webserver to act as a reverse proxy for the login bot.
+ 9. In your Discourse instance, navigate to the admin panel. Then open Site settings and then "Login" section.
+ 10. Tick `oauth2 enabled`
+ 11. Enter the same `client_id` and `client_secret` which you've entered for the loginbot configuration file in `oauth` section.
+ 12. In `oauth2 authorize url` you must enter the URL of `/authorize` endpoint of your loginbot. For instance if your loginbot web API is accessible from `https://foo.com/` then the authorize URL will be `https://foo.com/authorize`
+ 13. Fill `oauth2 token url` like the authorize URL. E.g. `https://foo.com/token`
+ 14. Select `POST` for `oauth2 token url method`. `GET` method is NOT supported by loginbot for the `/token` endpoint.
+ 15. Enter `params.info.email` as `oauth2 callback user id path`
+ 16. Add `name:params.info.username` and `email:params.info.email` as items for `oauth2 callback user info paths`.
+ 17. There are other stuff you can configure according to your need. You should look up Discourse docs for this. For example, `oauth2 button title` is the title of button the user sees. Like you can enter "Login with DeltaChat". You can read more in [Discourse Basic OAuth2 support](https://meta.discourse.org/t/discourse-oauth2-basic-support/33879)
 
 This photo shows an example configuration. The loginbot web API is accessible from `https://login-test.testrun.org/`
 
