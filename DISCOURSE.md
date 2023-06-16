@@ -35,7 +35,7 @@ The first step assumes you are on Linux and you are fine with a statically linke
  4. Use `bash scripts/gen_secret.sh` to generate two random strings for `client_id` and `client_secret` in `oauth` section of the config file. Enter one of randomly generated strings in `client_id` field and the other in `client_secret` field.
  5. Enter `https://discourse.tld/auth/oauth2_basic/callback` as `redirect_uri` where `discouse.tld` is the domain address of your Discourse.
  6. Run the binary. By default, it looks for `config.toml` in the current directory but you can specify somewhere else by a command line argument: `./loginbot /path/to/config.toml`
- 7. For production runs, a service manager is highly recommended for easier management of the loginbot process. For instance on Debian based distros and many others, systemd is used.
+ 7. For production runs, a service manager is highly recommended for easier management of the loginbot process. For instance on Debian based distros and many others, systemd is used. You can use the systemd user service template(`loginbot.service`).
  8. The bot's web API is listening to `listen_addr` as specified in the config file. To see different possible values for `listen_addr` see [valid values for SocketAddr](https://doc.rust-lang.org/nightly/core/net/enum.SocketAddr.html).
 9. You need a webserver to act as a reverse proxy for the login bot (see [this guide](https://www.digitalocean.com/community/tutorials/how-to-configure-nginx-as-a-reverse-proxy-on-ubuntu-22-04) as an example). Let it proxy traffic to the `listen_addr` from the `config.toml`.
 10. Point your domain to the server, so users can reach it (e.g. with `foo.com`).
