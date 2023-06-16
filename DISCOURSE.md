@@ -40,7 +40,7 @@ The first step assumes you are on Linux and you are fine with a statically linke
  11. Enter the same `client_id` and `client_secret` which you've entered for the loginbot configuration file in `oauth` section.
  12. In `oauth2 authorize url` you must enter the URL of `/authorize` endpoint of your loginbot. For instance if your loginbot web API is accessible from `https://foo.com/` then the authorize URL will be `https://foo.com/authorize`
  13. Fill `oauth2 token url` like the authorize URL. E.g. `https://foo.com/token`
- 14. Select `POST` for `oauth2 token url method`. `GET` method is NOT supported by loginbot for the `/token` endpoint.
+ 14. Select `POST` for `oauth2 token url method`.
  15. Enter `params.info.email` as `oauth2 callback user id path`
  16. Add `name:params.info.username` and `email:params.info.email` as items for `oauth2 callback user info paths`.
  17. There are other stuff you can configure according to your need. You should look up Discourse docs for this. For example, `oauth2 button title` is the title of button the user sees. Like you can enter "Login with DeltaChat". You can read more in [Discourse Basic OAuth2 support](https://meta.discourse.org/t/discourse-oauth2-basic-support/33879)
