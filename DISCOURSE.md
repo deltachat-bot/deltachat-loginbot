@@ -12,10 +12,13 @@ to get an optimized release binary for your platform.
 
 ## Prerequirements
 
- - A server to run loginbot on it. Root access is NOT required nor it is recommended to run loginbot as root.
- - A webserver like nginx to act as reverse proxy so that the outside world can talk with loginbot web APIs.
- - An email account for the loginbot
- - Admin access to the Discourse instance
+1. An email account for the loginbot
+2. Admin access to the Discourse instance
+3. A server to run loginbot on
+  - With a public IP address
+  - Root access is NOT required nor it is recommended to run loginbot as root.
+  - A webserver like nginx to act as reverse proxy so that the outside world can talk with loginbot web APIs.
+4. A domain you can point to the webserver
 
 ## Steps
 
