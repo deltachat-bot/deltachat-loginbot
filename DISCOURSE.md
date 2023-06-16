@@ -35,15 +35,26 @@ The first step assumes you are on Linux and you are fine with a statically linke
 9. You need a webserver to act as a reverse proxy for the login bot (see [this guide](https://www.digitalocean.com/community/tutorials/how-to-configure-nginx-as-a-reverse-proxy-on-ubuntu-22-04) as an example). Let it proxy traffic to the `listen_addr` from the `config.toml`.
 10. Point your domain to the server, so users can reach it (e.g. with `foo.com`).
 11. Create a TLS certificate for your domain, so the reverse proxy can encrypt the connection to the user, e.g. with [certbot](https://certbot.eff.org/).
- 9. In your Discourse instance, navigate to the admin panel. Then open Site settings and then "Login" section.
- 10. Tick `oauth2 enabled`
- 11. Enter the same `client_id` and `client_secret` which you've entered for the loginbot configuration file in `oauth` section.
- 12. In `oauth2 authorize url` you must enter the URL of `/authorize` endpoint of your loginbot. For instance if your loginbot web API is accessible from `https://foo.com/` then the authorize URL will be `https://foo.com/authorize`
- 13. Fill `oauth2 token url` like the authorize URL. E.g. `https://foo.com/token`
- 14. Select `POST` for `oauth2 token url method`.
- 15. Enter `params.info.email` as `oauth2 callback user id path`
- 16. Add `name:params.info.username` and `email:params.info.email` as items for `oauth2 callback user info paths`.
- 17. There are other stuff you can configure according to your need. You should look up Discourse docs for this. For example, `oauth2 button title` is the title of button the user sees. Like you can enter "Login with DeltaChat". You can read more in [Discourse Basic OAuth2 support](https://meta.discourse.org/t/discourse-oauth2-basic-support/33879)
+9. In your Discourse instance, navigate to the admin panel. Then open Site settings and then "Login" section.
+10. Install [Discourse basic OAuth2 plugin](https://github.com/discourse/discourse-oauth2-basic) see plugin installation guide [here](https://github.com/deltachat-bot/deltachat-loginbot/pull/16/files).
+11. Configure Basic OAuth2:
+```
+oauth2 enabled: 			true
+oauth2 client id: 			secret
+oauth2 client secret: 			secret
+oauth2 authorize url:			https://login.testrun.org/authorize
+oauth2 token url:			https://login.testrun.org/token
+oauth2 token url method:		POST
+oauth2 callback user id path:		params.info.userid
+oauth2 callback user info paths:	name:params.info.username
+					email:params.info.email
+oauth2 fetch user details:		false
+oauth2 email verified:			true
+oauth2 button title:			Login with Delta Chat
+oauth2 allow association change:	true
+```
+Enter the same client id and secret which you entered in `config.toml`. Change oauth2 authorize and token url according to your domain and where loginbot web API is listening.
+18. There are other stuff you can configure according to your need. You should look up Discourse docs for this. For example, `oauth2 button title` is the title of button the user sees. Like you can enter "Login with DeltaChat". You can read more in [Discourse Basic OAuth2 support](https://meta.discourse.org/t/discourse-oauth2-basic-support/33879)
 
 This photo shows an example configuration:
 
