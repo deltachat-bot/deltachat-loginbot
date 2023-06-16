@@ -45,7 +45,7 @@ The first step assumes you are on Linux and you are fine with a statically linke
  16. Add `name:params.info.username` and `email:params.info.email` as items for `oauth2 callback user info paths`.
  17. There are other stuff you can configure according to your need. You should look up Discourse docs for this. For example, `oauth2 button title` is the title of button the user sees. Like you can enter "Login with DeltaChat". You can read more in [Discourse Basic OAuth2 support](https://meta.discourse.org/t/discourse-oauth2-basic-support/33879)
 
-This photo shows an example configuration. The loginbot web API is accessible from `https://login-test.testrun.org/`
+This photo shows an example configuration:
 
 
 ![Discourse example configuration](./discourse.png)
