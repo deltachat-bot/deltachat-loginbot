@@ -1,0 +1,11 @@
+[Unit]
+Description=DeltaChat Loginbot
+
+[Service]
+Type=simple
+WorkingDirectory=%h/loginbot
+ExecStart=%h/loginbot/loginbot 
+Restart=always
+
+[Install]
+WantedBy=default.target
