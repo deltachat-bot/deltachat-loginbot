@@ -6,7 +6,12 @@ adding "Login with DeltaChat" to your Discourse instance.
 ## Getting a compiled version
 
 Each release comes with a compiled version for Linux x86 64 musl. This binary is stripped, optimized and should run on any Linux server with the
-said architecture regardless of the `libc` used in the distribution as the binary comes with its own `libc`. However, if you want it for some other 
+said architecture regardless of the `libc` used in the distribution as the binary comes with its own `libc`. 
+
+
+## Compiling from source
+
+If you want it for some other 
 platform, you can [install the Rust toolchain](https://www.rust-lang.org/learn/get-started) and then `cargo build -r` in the project's directory
 to get an optimized release binary for your platform.
 
