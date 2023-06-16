@@ -26,7 +26,7 @@ The first step assumes you are on Linux and you are fine with a statically linke
 
  1. Download the latest release from Releases and get the binary: `wget https://github.com/deltachat-bot/deltachat-loginbot/releases/download/v0.3.0/deltachat-loginbot-x86_64-linux-musl_0.3.0.tar.bz2`
  2. Extract loginbot's binary and other stuff to an empty directory: `tar xvf deltachat-loginbot-x86_64-linux-musl_0.3.0.tar.bz2 -C empty_directory`
- 3. Rename `example_config.toml` to `config.toml` and modify the TOML config file(`example_config.toml`) to your need. Enter email address and password respectively in `email` and `password` fields in `config.toml`
+ 3. Rename `example_config.toml` to `config.toml` and modify the TOML config file(`config.toml`) to your need. Enter the email address and password for the loginbot account into the `email` and `password` fields in `config.toml`
  4. Use `bash scripts/gen_secret.sh` to generate two random strings for `client_id` and `client_secret` in `oauth` section of the config file. Enter one of randomly generated strings in `client_id` field and the other in `client_secret` field.
  5. Enter `https://discourse.tld/auth/oauth2_basic/callback` as `redirect_uri` where `discouse.tld` is the domain address of your Discourse.
  6. Run the binary. By default, it looks for `config.toml` in the current directory but you can specify somewhere else by a command line argument: `./loginbot /path/to/config.toml`
