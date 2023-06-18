@@ -45,10 +45,10 @@ The first step assumes you are on Linux and you are fine with a statically linke
 11. Configure Basic OAuth2:
 ```
 oauth2 enabled: 			true
-oauth2 client id: 			secret
-oauth2 client secret: 			secret
-oauth2 authorize url:			https://login.testrun.org/authorize
-oauth2 token url:			https://login.testrun.org/token
+oauth2 client id: 			<secret>
+oauth2 client secret: 			<secret>
+oauth2 authorize url:			https://foo.com/authorize
+oauth2 token url:			https://foo.com/token
 oauth2 token url method:		POST
 oauth2 callback user id path:		params.info.userid
 oauth2 callback user info paths:	name:params.info.username
