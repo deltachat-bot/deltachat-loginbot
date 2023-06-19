@@ -9,7 +9,7 @@ Each release comes with a compiled version for Linux x86 64 musl. This binary is
 said architecture regardless of the `libc` used in the distribution as the binary comes with its own `libc`. 
 
 
-## Compiling from source
+### Compiling from source
 
 If you want it for some other 
 platform, you can [install the Rust toolchain](https://www.rust-lang.org/learn/get-started) and then `cargo build -r` in the project's directory
