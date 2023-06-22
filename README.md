@@ -11,6 +11,11 @@ When you visit the website and you are not logged in you get to the login page. 
 
 In our case of this login bot, the website you access is an OAuth2 provider. So you can use this as a login method for all kinds of web-apps like [Discourse](https://www.discourse.org/) or [Wiki.js](https://js.wiki) which both have a generic OAuth2 authentication module.
 
+
+## How to run it?
+
+Currently, loginbot covers enough of OAuth2 specs to use it with Discourse. You can see the guide in [DISCOURSE.md](./DISCOURSE.md)
+
 ## How does it work?
 
 1. The front-end first sends a GET request to the `/requestQr` API of this loginbot to create and get an invite to a DeltaChat group.
