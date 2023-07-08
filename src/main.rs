@@ -321,7 +321,7 @@ async fn webhook_fn() -> &'static str {
 async fn authorize_fn(
     Query(queries): Query<AuthorizeQuery>,
     State(state): State<AppState>,
-    session: ReadableSession,
+    mut session: WritableSession,
 ) -> Result<Response, AppError> {
     let config = &state.config;
     if queries.client_id != config.oauth.client_id {
@@ -336,9 +336,8 @@ async fn authorize_fn(
     let tree = state.db.open_tree("default")?;
     if let Some(contact_id) = session.get::<u32>("contact_id") {
         tree.insert(&auth_code, &contact_id.to_le_bytes())?;
-        tree.insert(contact_id.to_le_bytes(), &*auth_code)?;
-        // is it really required to save both pairs?
-        log::info!("/authorize Redirected");
+        log::info!("/authorize Redirected. Removing contact_id from session");
+        session.remove("contact_id");
         Ok(Redirect::temporary(&format!(
             "{}?state={}&code={auth_code}",
             queries.redirect_uri, queries.state
