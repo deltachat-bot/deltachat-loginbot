@@ -53,7 +53,7 @@ use tower::ServiceBuilder;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 
 use crate::config::BotConfig;
-use crate::queries::*;
+use crate::queries::{AuthorizeQuery, TokenQuery};
 
 // Short expiry is important, because right now we don't have an logout button on the login page
 // And even if we did have one, users would never get the idea that they not only need to logout of discourse,
