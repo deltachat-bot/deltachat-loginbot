@@ -53,7 +53,7 @@ use tower::ServiceBuilder;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 
 use crate::config::BotConfig;
-use crate::queries::*;
+use crate::queries::{AuthorizeQuery, TokenQuery};
 
 // Short expiry is important, because right now we don't have an logout button on the login page
 // And even if we did have one, users would never get the idea that they not only need to logout of discourse,
@@ -321,7 +321,7 @@ async fn webhook_fn() -> &'static str {
 async fn authorize_fn(
     Query(queries): Query<AuthorizeQuery>,
     State(state): State<AppState>,
-    session: ReadableSession,
+    mut session: WritableSession,
 ) -> Result<Response, AppError> {
     let config = &state.config;
     if queries.client_id != config.oauth.client_id {
@@ -336,9 +336,8 @@ async fn authorize_fn(
     let tree = state.db.open_tree("default")?;
     if let Some(contact_id) = session.get::<u32>("contact_id") {
         tree.insert(&auth_code, &contact_id.to_le_bytes())?;
-        tree.insert(contact_id.to_le_bytes(), &*auth_code)?;
-        // is it really required to save both pairs?
-        log::info!("/authorize Redirected");
+        log::info!("/authorize Redirected. Removing contact_id from session");
+        session.remove("contact_id");
         Ok(Redirect::temporary(&format!(
             "{}?state={}&code={auth_code}",
             queries.redirect_uri, queries.state
