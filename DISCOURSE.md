@@ -50,7 +50,7 @@ oauth2 client secret: 			<secret>
 oauth2 authorize url:			https://foo.com/authorize
 oauth2 token url:			https://foo.com/token
 oauth2 token url method:		POST
-oauth2 callback user id path:		params.info.userid
+oauth2 callback user id path:		params.info.email
 oauth2 callback user info paths:	name:params.info.username
 					email:params.info.email
 oauth2 fetch user details:		false
