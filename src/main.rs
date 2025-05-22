@@ -282,7 +282,9 @@ async fn check_status_fn(
                 };
                 if !session.get::<bool>("sent").unwrap_or(false) {
                     let mut msg = Message::new(Viewtype::Text);
-                    msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
+                    msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. \
+                                        You can leave this chat and delete it now. \
+                                        And then you have to get back to the browser page".to_string()));
                     send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
                     session.insert(
                         "contact_id",
