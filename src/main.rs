@@ -21,36 +21,33 @@ use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 use std::str::FromStr;
-use std::time::Duration;
 
 use anyhow::{Context as _, Error};
-use deltachat::chat::{create_group_chat, get_chat_contacts, send_msg, ChatId, ProtectionStatus};
+use deltachat::chat::{create_group, get_chat_contacts, send_msg, ChatId};
 use deltachat::config::Config;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::{Context, ContextBuilder};
 use deltachat::message::{Message, Viewtype};
 use deltachat::qr_code_generator::get_securejoin_qr_svg;
 use deltachat::securejoin::get_securejoin_qr;
-use rand::RngCore;
 use serde_json::{json, Value};
 
 use axum::{
     body::Bytes,
-    extract::{Form, Query, State, TypedHeader},
-    headers::{authorization::Basic, Authorization, ContentType},
+    extract::{Form, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, head, post},
     Json, Router,
 };
-use axum_sessions::{
-    async_session::MemoryStore,
-    extractors::{ReadableSession, WritableSession},
-    SessionLayer,
+use axum_extra::{
+    headers::{authorization::Basic, Authorization, ContentType},
+    TypedHeader,
 };
 use mime::Mime;
 use tower::ServiceBuilder;
 use tower_http::{services::ServeDir, trace::TraceLayer};
+use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
 use crate::config::BotConfig;
 use crate::queries::{AuthorizeQuery, TokenQuery};
@@ -78,6 +75,7 @@ struct AppError(Error);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        log::error!("internal error: {:#}", self.0);
         (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong").into_response()
     }
 }
@@ -138,20 +136,11 @@ async fn main() -> anyhow::Result<()> {
             .join("login.html"),
         )?)?,
     };
-    /*
-    if botconfig.enable_request_logging == Some(true) {
-        backend.with(tide::log::LogMiddleware::new());
-    }
-    */
-    let secret: [u8; 128] = {
-        let mut secret = [0u8; 128];
-        let mut rng = rand::rngs::OsRng::default();
-        rng.fill_bytes(&mut secret);
-        secret
-    };
-    let store = MemoryStore::new();
-    let session_layer = SessionLayer::new(store, &secret)
-        .with_session_ttl(Some(Duration::from_secs(SESSION_EXPIRY_IN_SECONDS)));
+    let store = MemoryStore::default();
+    let session_layer =
+        SessionManagerLayer::new(store).with_expiry(tower_sessions::Expiry::OnInactivity(
+            time::Duration::seconds(SESSION_EXPIRY_IN_SECONDS as i64),
+        ));
     let backend = Router::new()
         .route("/authorize", get(authorize_fn))
         // Authorize API which is called the first time and shows the login screen
@@ -191,14 +180,12 @@ async fn main() -> anyhow::Result<()> {
         ctx.set_config(Config::MailPw, Some(botconfig.password.clone().as_str()))
             .await?;
         ctx.set_config(Config::Bot, Some("1")).await?;
-        ctx.set_config(Config::E2eeEnabled, Some("1")).await?;
         ctx.configure().await.context("configuration failed...")?;
     }
-    //log::info!("Serving static files from {}", &botconfig.static_dir.unwrap_or("./static/".to_string()));
     // connect to email server
     ctx.start_io().await;
-    hyper::Server::bind(&botconfig.listen_addr.parse()?)
-        .serve(backend.into_make_service())
+    let listener = tokio::net::TcpListener::bind(&botconfig.listen_addr).await?;
+    axum::serve(listener, backend)
         .with_graceful_shutdown(shutdown_signal::shutdown_signal())
         .await?;
     log::info!("Shutting Down");
@@ -209,19 +196,17 @@ async fn main() -> anyhow::Result<()> {
 
 async fn requestqr_fn(
     State(state): State<AppState>,
-    mut session: WritableSession,
+    session: Session,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
     let group = {
-        if let Some(group_id) = session.get::<u32>("group_id") {
+        if let Some(group_id) = session.get::<u32>("group_id").await? {
             ChatId::new(group_id)
         } else {
             let mut uuid = uuid::Uuid::new_v4().simple().to_string();
             uuid.truncate(5);
             let group_name = format!("LoginBot group {uuid}");
-            let group =
-                create_group_chat(&state.dc_context, ProtectionStatus::Protected, &group_name)
-                    .await?;
-            session.insert("group_id", group.to_u32())?;
+            let group = create_group(&state.dc_context, &group_name).await?;
+            session.insert("group_id", group.to_u32()).await?;
             group
         }
     };
@@ -232,8 +217,14 @@ async fn requestqr_fn(
 }
 
 #[allow(clippy::unused_async)]
-async fn requestqr_svg_check_fn(session: ReadableSession) -> StatusCode {
-    if session.get::<u32>("group_id").is_some() {
+async fn requestqr_svg_check_fn(session: Session) -> StatusCode {
+    if session
+        .get::<u32>("group_id")
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
         StatusCode::OK
     } else {
         StatusCode::BAD_REQUEST
@@ -242,9 +233,9 @@ async fn requestqr_svg_check_fn(session: ReadableSession) -> StatusCode {
 
 async fn requestqr_svg_fn(
     State(state): State<AppState>,
-    session: ReadableSession,
+    session: Session,
 ) -> Result<(StatusCode, TypedHeader<ContentType>, Bytes), AppError> {
-    if let Some(group_id) = session.get::<u32>("group_id") {
+    if let Some(group_id) = session.get::<u32>("group_id").await? {
         let qr = get_securejoin_qr_svg(&state.dc_context, Some(ChatId::new(group_id))).await?;
         Ok((
             StatusCode::OK,
@@ -262,9 +253,9 @@ async fn requestqr_svg_fn(
 
 async fn check_status_fn(
     State(state): State<AppState>,
-    mut session: WritableSession,
+    session: Session,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
-    if let Some(group_id) = session.get::<u32>("group_id") {
+    if let Some(group_id) = session.get::<u32>("group_id").await? {
         let dc_context = &state.dc_context;
         log::info!("/checkStatus Getting chat members for group {group_id}");
         let chat_members = get_chat_contacts(dc_context, ChatId::new(group_id)).await?;
@@ -272,7 +263,7 @@ async fn check_status_fn(
             1 => Ok((StatusCode::OK, Json(json!({ "waiting": true })))),
             2 => {
                 let i = {
-                    if chat_members.get(0).context("chat has no members")?
+                    if chat_members.first().context("chat has no members")?
                         == &deltachat::contact::ContactId::SELF
                     {
                         1
@@ -280,23 +271,25 @@ async fn check_status_fn(
                         0
                     }
                 };
-                if !session.get::<bool>("sent").unwrap_or(false) {
+                if !session.get::<bool>("sent").await?.unwrap_or(false) {
                     let mut msg = Message::new(Viewtype::Text);
-                    msg.set_text(Some("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string()));
+                    msg.set_text("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string());
                     send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
-                    session.insert(
-                        "contact_id",
-                        chat_members
-                            .get(i)
-                            .context("can not get chat member")?
-                            .to_u32(),
-                    )?;
-                    session.insert("sent", true)?;
+                    session
+                        .insert(
+                            "contact_id",
+                            chat_members
+                                .get(i)
+                                .context("can not get chat member")?
+                                .to_u32(),
+                        )
+                        .await?;
+                    session.insert("sent", true).await?;
                 }
                 Ok((StatusCode::OK, Json(json!({ "success": true }))))
             }
             number_of_members => {
-                log::error!("{}", format!("/checkStatus This must not happen. There is/are {number_of_members} in the group {group_id}"));
+                log::error!("/checkStatus This must not happen. There is/are {number_of_members} in the group {group_id}");
                 Err(AppError(Error::msg(format!(
                     "Error! number of chat member {group_id} is not 1 or 2"
                 ))))
@@ -321,7 +314,7 @@ async fn webhook_fn() -> &'static str {
 async fn authorize_fn(
     Query(queries): Query<AuthorizeQuery>,
     State(state): State<AppState>,
-    mut session: WritableSession,
+    session: Session,
 ) -> Result<Response, AppError> {
     let config = &state.config;
     if queries.client_id != config.oauth.client_id {
@@ -334,10 +327,10 @@ async fn authorize_fn(
     }
     let auth_code: String = uuid::Uuid::new_v4().simple().to_string();
     let tree = state.db.open_tree("default")?;
-    if let Some(contact_id) = session.get::<u32>("contact_id") {
+    if let Some(contact_id) = session.get::<u32>("contact_id").await? {
         tree.insert(&auth_code, &contact_id.to_le_bytes())?;
         log::info!("/authorize Redirected. Removing contact_id from session");
-        session.remove("contact_id");
+        session.remove::<u32>("contact_id").await?;
         Ok(Redirect::temporary(&format!(
             "{}?state={}&code={auth_code}",
             queries.redirect_uri, queries.state
@@ -383,10 +376,10 @@ async fn token_fn(
         let tree = state.db.open_tree("default")?;
         log::debug!("/token Opened default tree in sled");
         if let Some(data) = tree.get(code)? {
-            let user = Contact::load_from_db(
+            let user = Contact::get_by_id(
                 &state.dc_context,
                 ContactId::new(u32::from_le_bytes(data[..].try_into()?)),
-                // this should be in parrallel with the convert in /authorize
+                // this should be in parallel with the convert in /authorize
                 // that, if I expect a u32 in little-endian, it must be saved as such
                 // in /authorize as well
             )
