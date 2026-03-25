@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.70"
-deltachat = { git = "https://github.com/chatmail/core", tag = "v2.47.0" }
+deltachat = { git = "https://github.com/chatmail/core", tag = "v2.43.0" }
 serde = { version = "1.0.159", features = ["serde_derive"] }
 sled = "0.34.7"
 axum = { version = "0.7", features = ["form", "query", "json", "http1", "tokio"] }
