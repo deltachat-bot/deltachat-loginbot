@@ -71,7 +71,6 @@ pub struct TokenQuery {
     pub code: Option<String>,
 }
 
-
 // Short expiry: no logout button, so reuse would skip the QR scan.
 const SESSION_EXPIRY_IN_SECONDS: u64 = 15 * 60;
 
@@ -250,7 +249,7 @@ async fn authorize_fn(
         tree.insert(&auth_code, &contact_id.to_le_bytes())?;
         log::info!("/authorize Redirected. Removing contact_id from session");
         session.remove::<u32>("contact_id").await?;
-        
+
         let mut url = url::Url::parse(&queries.redirect_uri).context("invalid redirect uri")?;
         url.query_pairs_mut()
             .append_pair("state", &queries.state)
@@ -319,5 +318,3 @@ async fn token_fn(
         Json(json!({ "error": "no code in form data nor string queries" })),
     ))
 }
-
-

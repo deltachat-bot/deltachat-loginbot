@@ -28,8 +28,8 @@ Currently, loginbot covers enough of OAuth2 specs to use it with Discourse. You 
 ## Technologies used
 
  - [axum](https://github.com/tokio-rs/axum) for the web API part
- - [DeltaChat core](https://github.com/deltachat/deltachat-core-rust)
- - [sled-rs](https://sled.rs/) as the Key-Value database
+ - [Chatmail core](https://github.com/chatmail/core)
+ - [sled](https://github.com/spacejam/sled) as the Key-Value database
  - TOML for the config file
 
 ## License
