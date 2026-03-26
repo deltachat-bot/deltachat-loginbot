@@ -2,9 +2,8 @@ mod shutdown_signal;
 
 use std::env::{args, current_dir};
 use std::fs::read;
-use std::path::{Path, PathBuf};
-use std::str::from_utf8;
-use std::str::FromStr;
+use std::path::PathBuf;
+use std::str::{from_utf8, FromStr};
 
 use anyhow::Context as _;
 use deltachat::config::Config;
@@ -24,10 +23,12 @@ async fn main() -> anyhow::Result<()> {
         }
         botconfig = toml::from_str(from_utf8(&read(config_file_path)?)?)?;
     }
-    let level: String = botconfig.log_level.clone().unwrap_or("warn".to_string());
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::from_str(&level).unwrap_or(tracing::Level::WARN))
-        .init();
+    let level = botconfig
+        .log_level
+        .as_deref()
+        .and_then(|s| tracing::Level::from_str(s).ok())
+        .unwrap_or(tracing::Level::WARN);
+    tracing_subscriber::fmt().with_max_level(level).init();
     let db = sled::open(&botconfig.oauth_db)?;
     let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
         .open()
@@ -44,24 +45,17 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
+    let static_dir = botconfig
+        .static_dir
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("./static"));
     let state: AppState = AppState {
         db,
         dc_context: ctx.clone(),
         config: botconfig.clone(),
-        login_html: String::from_utf8(read(
-            Path::new(
-                &botconfig
-                    .static_dir
-                    .clone()
-                    .unwrap_or("./static/".to_string()),
-            )
-            .join("login.html"),
-        )?)?,
+        login_html: String::from_utf8(read(static_dir.join("login.html"))?)?,
     };
-    let backend = build_router(
-        state,
-        botconfig.static_dir.unwrap_or("./static".to_string()),
-    );
+    let backend = build_router(state, static_dir);
 
     if !ctx.get_config_bool(Config::Configured).await? {
         log::info!("Configure deltachat context");
@@ -74,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     }
     // connect to email server
     ctx.start_io().await;
-    let listener = tokio::net::TcpListener::bind(&botconfig.listen_addr).await?;
+    let listener = tokio::net::TcpListener::bind(botconfig.listen_addr).await?;
     axum::serve(listener, backend)
         .with_graceful_shutdown(shutdown_signal::shutdown_signal())
         .await?;

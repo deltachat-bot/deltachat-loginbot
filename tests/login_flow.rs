@@ -79,18 +79,18 @@ async fn full_login_flow() -> Result<()> {
             password: "unused-in-test".into(),
             deltachat_db: dir.path().join("bot.db").to_string_lossy().into(),
             oauth_db: dir.path().join("oauth.db").to_string_lossy().into(),
-            listen_addr: "127.0.0.1:0".into(),
+            listen_addr: "127.0.0.1:0".parse()?,
             oauth: OAuthConfig {
                 client_id: CLIENT_ID.into(),
                 client_secret: CLIENT_SECRET.into(),
                 redirect_uri: REDIRECT_URI.into(),
             },
-            static_dir: Some(static_dir.to_string_lossy().into()),
+            static_dir: Some(static_dir.clone()),
             log_level: None,
         },
         login_html: "<html>login</html>".into(),
     };
-    let router = build_router(state, static_dir.to_string_lossy().into());
+    let router = build_router(state, static_dir);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
@@ -200,8 +200,7 @@ async fn full_login_flow() -> Result<()> {
     // Extract the auth code from the redirect URL
     let code = url::Url::parse(location)?
         .query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.to_string())
+        .find_map(|(k, v)| (k == "code").then(|| v.to_string()))
         .context("no code query param")?;
     log::info!("Got auth code: {code}");
 

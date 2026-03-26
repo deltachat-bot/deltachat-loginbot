@@ -32,6 +32,9 @@
 
 use serde::Deserialize;
 
+use std::net::SocketAddr;
+use std::path::PathBuf;
+
 use anyhow::{Context as _, Error};
 use deltachat::chat::{create_group, get_chat_contacts, send_msg, ChatId};
 use deltachat::contact::{Contact, ContactId};
@@ -71,13 +74,13 @@ pub struct BotConfig {
     pub deltachat_db: String,
     /// Path to the sled key-value store used for OAuth codes and identities.
     pub oauth_db: String,
-    /// `host:port` the HTTP server listens on.
-    pub listen_addr: String,
+    /// Socket address the HTTP server listens on (e.g. `"127.0.0.1:8080"`).
+    pub listen_addr: SocketAddr,
     /// OAuth2 client configuration (id, secret, redirect URI).
     pub oauth: OAuthConfig,
     /// Directory from which static files (login.html, …) are served.
-    pub static_dir: Option<String>,
-    /// Tracing log level (e.g. `"info"`). Defaults to `"warn"`.
+    pub static_dir: Option<PathBuf>,
+    /// Tracing log level string (e.g. `"info"`). Defaults to `WARN`.
     pub log_level: Option<String>,
 }
 
@@ -147,7 +150,7 @@ where
 /// Build the Axum [`Router`] with all loginbot HTTP handlers attached.
 ///
 /// `static_dir` is the filesystem path served at `/` for static assets.
-pub fn build_router(state: AppState, static_dir: String) -> Router {
+pub fn build_router(state: AppState, static_dir: PathBuf) -> Router {
     let store = MemoryStore::default();
     let session_layer =
         SessionManagerLayer::new(store).with_expiry(tower_sessions::Expiry::OnInactivity(
