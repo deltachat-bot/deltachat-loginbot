@@ -155,24 +155,24 @@ pub fn build_router(state: AppState, static_dir: String) -> Router {
         ));
     Router::new()
         // OAuth2 authorize: shows login page or redirects if already authenticated
-        .route("/authorize", get(authorize_fn))
+        .route("/authorize", get(get_authorize))
         // OAuth2 token exchange: validates auth code and returns user info
-        .route("/token", post(token_fn))
-        .route("/webhook", post(webhook_fn))
+        .route("/token", post(post_token))
+        .route("/webhook", post(post_webhook))
         // Creates a DC group and returns the securejoin invite link
-        .route("/requestQr", get(requestqr_fn))
+        .route("/requestQr", get(get_requestqr))
         // Returns the invite QR as SVG; HEAD checks if a group exists
-        .route("/requestQrSvg", get(requestqr_svg_fn))
-        .route("/requestQrSvg", head(requestqr_svg_check_fn))
+        .route("/requestQrSvg", get(get_requestqr_svg))
+        .route("/requestQrSvg", head(head_requestqr_svg))
         // Polled by the login page to detect when the user joined the group
-        .route("/checkStatus", get(check_status_fn))
+        .route("/checkStatus", get(get_checkstatus))
         .nest_service("/", ServeDir::new(static_dir))
         .with_state(state)
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()))
         .layer(session_layer)
 }
 
-async fn requestqr_fn(
+async fn get_requestqr(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
@@ -190,7 +190,7 @@ async fn requestqr_fn(
     ))
 }
 
-async fn requestqr_svg_check_fn(session: Session) -> StatusCode {
+async fn head_requestqr_svg(session: Session) -> StatusCode {
     if session
         .get::<u32>("group_id")
         .await
@@ -204,7 +204,7 @@ async fn requestqr_svg_check_fn(session: Session) -> StatusCode {
     }
 }
 
-async fn requestqr_svg_fn(
+async fn get_requestqr_svg(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<(StatusCode, TypedHeader<ContentType>, Bytes), AppError> {
@@ -224,7 +224,7 @@ async fn requestqr_svg_fn(
     }
 }
 
-async fn check_status_fn(
+async fn get_checkstatus(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
@@ -289,11 +289,11 @@ async fn check_status_fn(
 }
 
 #[allow(clippy::unused_async)]
-async fn webhook_fn() -> &'static str {
+async fn post_webhook() -> &'static str {
     "ola"
 }
 
-async fn authorize_fn(
+async fn get_authorize(
     Query(queries): Query<AuthorizeQuery>,
     State(state): State<AppState>,
     session: Session,
@@ -328,7 +328,7 @@ async fn authorize_fn(
     }
 }
 
-async fn token_fn(
+async fn post_token(
     State(state): State<AppState>,
     TypedHeader(auth): TypedHeader<Authorization<Basic>>,
     Form(form): Form<TokenQuery>,
