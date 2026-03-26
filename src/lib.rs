@@ -198,6 +198,27 @@ async fn check_status_fn(
                     let mut msg = Message::new(Viewtype::Text);
                     msg.set_text("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string());
                     send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
+
+                    // Persist fingerprint → addr on first ever login for this key.
+                    // Subsequent logins with any address sharing the same key
+                    // will be resolved to this canonical addr in /token.
+                    let contact = Contact::get_by_id(dc_context, ContactId::new(member_id)).await?;
+                    if let Some(fp) = contact.fingerprint() {
+                        let id_tree = state.db.open_tree("identities")?;
+                        let fp_hex = fp.hex();
+                        if !id_tree.contains_key(&fp_hex)? {
+                            id_tree.insert(&fp_hex, contact.get_addr().as_bytes())?;
+                            log::info!(
+                                "/checkStatus registered canonical addr {} for fingerprint {fp_hex}",
+                                contact.get_addr()
+                            );
+                        } else {
+                            log::info!(
+                                "/checkStatus fingerprint {fp_hex} already mapped; canonical addr unchanged"
+                            );
+                        }
+                    }
+
                     session.insert("contact_id", member_id).await?;
                     session.insert("sent", true).await?;
                 }
@@ -285,21 +306,37 @@ async fn token_fn(
         let tree = state.db.open_tree("default")?;
         log::debug!("/token Opened default tree in sled");
         if let Some(data) = tree.get(code)? {
-            let user = Contact::get_by_id(
+            let contact = Contact::get_by_id(
                 &state.dc_context,
                 ContactId::new(u32::from_le_bytes(data[..].try_into()?)),
             )
             .await?;
+            // Resolve canonical addr: if this contact's key fingerprint was
+            // seen before (possibly under a different address), return the
+            // address from the first successful login so that Discourse always
+            // identifies the user by one stable email.
+            let canonical_addr = if let Some(fp) = contact.fingerprint() {
+                let id_tree = state.db.open_tree("identities")?;
+                id_tree
+                    .get(fp.hex())?
+                    .and_then(|v| String::from_utf8(v.to_vec()).ok())
+                    .unwrap_or_else(|| contact.get_addr().to_string())
+            } else {
+                contact.get_addr().to_string()
+            };
+            log::info!(
+                "/token resolved addr: {} → {canonical_addr}",
+                contact.get_addr()
+            );
             return Ok((
                 StatusCode::OK,
                 Json(json!({
-
                     "access_token": uuid::Uuid::new_v4().to_string(),
                     "token_type": "bearer",
                     "expires_in": 1,
                     "info": {
-                        "username": user.get_name(),
-                        "email": user.get_addr(),
+                        "username": contact.get_name(),
+                        "email": canonical_addr,
                     }
                 })),
             ));
