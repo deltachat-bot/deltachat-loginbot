@@ -1,13 +1,30 @@
+#![recursion_limit = "256"]
+#![forbid(unsafe_code)]
 #![warn(
     unused,
     clippy::correctness,
     missing_debug_implementations,
+    missing_docs,
     clippy::all,
-    clippy::indexing_slicing,
     clippy::wildcard_imports,
     clippy::needless_borrow,
     clippy::cast_lossless,
-    clippy::unused_async
+    clippy::unused_async,
+    clippy::explicit_iter_loop,
+    clippy::explicit_into_iter_loop,
+    clippy::cloned_instead_of_copied,
+    clippy::manual_is_variant_and
+)]
+#![cfg_attr(not(test), warn(clippy::arithmetic_side_effects))]
+#![cfg_attr(not(test), forbid(clippy::indexing_slicing))]
+#![cfg_attr(not(test), forbid(clippy::string_slice))]
+#![allow(
+    clippy::match_bool,
+    clippy::mixed_read_write_in_expression,
+    clippy::bool_assert_comparison,
+    clippy::manual_split_once,
+    clippy::format_push_string,
+    clippy::bool_to_int_with_if
 )]
 
 use serde::Deserialize;
