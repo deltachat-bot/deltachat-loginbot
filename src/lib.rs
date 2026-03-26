@@ -129,18 +129,14 @@ async fn requestqr_fn(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<(StatusCode, Json<Value>), AppError> {
-    let group = {
-        if let Some(group_id) = session.get::<u32>("group_id").await? {
-            ChatId::new(group_id)
-        } else {
-            let mut uuid = uuid::Uuid::new_v4().simple().to_string();
-            uuid.truncate(5);
-            let group_name = format!("LoginBot group {uuid}");
-            let group = create_group(&state.dc_context, &group_name).await?;
-            session.insert("group_id", group.to_u32()).await?;
-            group
-        }
-    };
+    let mut uuid = uuid::Uuid::new_v4().simple().to_string();
+    uuid.truncate(5);
+    let group = create_group(&state.dc_context, &format!("LoginBot group {uuid}")).await?;
+    // Reset per-login state so that a second login attempt from the same
+    // browser session starts fresh (old `sent` flag must not carry over).
+    session.insert("group_id", group.to_u32()).await?;
+    session.remove::<bool>("sent").await?;
+    session.remove::<u32>("contact_id").await?;
     Ok((
         StatusCode::OK,
         Json(json!({ "link": get_securejoin_qr(&state.dc_context, Some(group)).await? })),
@@ -247,8 +243,10 @@ async fn authorize_fn(
     let tree = state.db.open_tree("default")?;
     if let Some(contact_id) = session.get::<u32>("contact_id").await? {
         tree.insert(&auth_code, &contact_id.to_le_bytes())?;
-        log::info!("/authorize Redirected. Removing contact_id from session");
-        session.remove::<u32>("contact_id").await?;
+        log::info!("/authorize Redirected. Clearing session state.");
+        // Flush the whole session so the next login starts completely fresh.
+        // (group_id and sent must not carry over to a second login attempt.)
+        session.flush().await?;
 
         let mut url = url::Url::parse(&queries.redirect_uri).context("invalid redirect uri")?;
         url.query_pairs_mut()

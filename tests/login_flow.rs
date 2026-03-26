@@ -120,6 +120,17 @@ async fn full_login_flow() -> Result<()> {
         .context("no link in requestQr response")?
         .to_string();
     log::info!("Got invite link: {invite_link}");
+
+    // Assert that a second call generates a new link
+    let resp2 = client.get(format!("{base_url}/requestQr")).send().await?;
+    let json2: serde_json::Value = resp2.json().await?;
+    let invite_link_2 = json2["link"].as_str().unwrap().to_string();
+    assert_ne!(
+        invite_link, invite_link_2,
+        "second invocation returned identical QR code"
+    );
+    // Use the latest invite link for the remainder of the test
+    let invite_link = invite_link_2;
     assert!(
         invite_link.starts_with("https://"),
         "expected https invite link, got: {invite_link}"
@@ -209,6 +220,66 @@ async fn full_login_flow() -> Result<()> {
     let user_addr = user_ctx.get_config(Config::Addr).await?.unwrap_or_default();
     assert_eq!(email, user_addr, "email mismatch");
     log::info!("Token exchange returned email={email}");
+
+    // 10) Second login from the same browser session (same cookie jar).
+    //     This is the repeated-login regression: a stale `sent=true` session
+    //     key previously prevented `contact_id` from being written, so
+    //     /authorize showed the login page instead of redirecting.
+    log::info!("--- Second login attempt (same browser session) ---");
+    let resp = client.get(format!("{base_url}/requestQr")).send().await?;
+    assert_eq!(resp.status(), 200, "second requestQr failed");
+    let json: serde_json::Value = resp.json().await?;
+    let invite_link2 = json["link"]
+        .as_str()
+        .context("no link in second requestQr response")?
+        .to_string();
+    log::info!("Got second invite link: {invite_link2}");
+
+    join_securejoin(&user_ctx, &invite_link2).await?;
+
+    let mut joined2 = false;
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let resp = client.get(format!("{base_url}/checkStatus")).send().await?;
+        let json: serde_json::Value = resp.json().await?;
+        if json.get("success").is_some() {
+            log::info!("Second join confirmed: {json}");
+            joined2 = true;
+            break;
+        }
+    }
+    assert!(joined2, "second login: user was not detected within 60s");
+
+    let resp = client
+        .get(format!("{base_url}/authorize"))
+        .query(&[
+            ("client_id", CLIENT_ID),
+            ("redirect_uri", REDIRECT_URI),
+            ("state", "test456"),
+            ("response_type", "code"),
+        ])
+        .send()
+        .await?;
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::TEMPORARY_REDIRECT,
+        "second login: expected redirect, got {}",
+        resp.status()
+    );
+    let location2 = resp
+        .headers()
+        .get("location")
+        .context("second login: no location header")?
+        .to_str()?;
+    assert!(
+        location2.contains("code="),
+        "second login: no code in redirect: {location2}"
+    );
+    assert!(
+        location2.contains("state=test456"),
+        "second login: state lost: {location2}"
+    );
+    log::info!("Second login redirected to: {location2}");
 
     // Cleanup
     bot_ctx.stop_io().await;
