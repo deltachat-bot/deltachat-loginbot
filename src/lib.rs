@@ -26,6 +26,9 @@
     clippy::format_push_string,
     clippy::bool_to_int_with_if
 )]
+//! Loginbot library: OAuth2 login flow backed by Delta Chat securejoin.
+//!
+//! Exposes [`build_router`] which wires up all HTTP handlers.
 
 use serde::Deserialize;
 
@@ -57,45 +60,69 @@ use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
 pub use deltachat;
 
+/// Top-level configuration read from `config.toml`.
 #[derive(Deserialize, Clone, Debug)]
 pub struct BotConfig {
+    /// Email address the bot account uses for IMAP/SMTP.
     pub email: String,
+    /// IMAP/SMTP password for the bot account.
     pub password: String,
+    /// Path to the Delta Chat SQLite database file.
     pub deltachat_db: String,
+    /// Path to the sled key-value store used for OAuth codes and identities.
     pub oauth_db: String,
+    /// `host:port` the HTTP server listens on.
     pub listen_addr: String,
+    /// OAuth2 client configuration (id, secret, redirect URI).
     pub oauth: OAuthConfig,
+    /// Directory from which static files (login.html, …) are served.
     pub static_dir: Option<String>,
+    /// Tracing log level (e.g. `"info"`). Defaults to `"warn"`.
     pub log_level: Option<String>,
 }
 
+/// OAuth2 client credentials and callback URI.
 #[derive(Deserialize, Clone, Debug)]
 pub struct OAuthConfig {
+    /// OAuth2 `client_id` that must match the value sent by the relying party.
     pub client_id: String,
+    /// Shared secret used to authenticate the relying party on `/token`.
     pub client_secret: String,
+    /// Redirect URI the bot will forward the auth code to.
     pub redirect_uri: String,
 }
 
+/// Query parameters expected on the `/authorize` endpoint.
 #[derive(Debug, Deserialize)]
 pub struct AuthorizeQuery {
+    /// OAuth2 client identifier.
     pub client_id: String,
+    /// URI the bot redirects to after successful authentication.
     pub redirect_uri: String,
+    /// Opaque state value echoed back to the relying party.
     pub state: String,
 }
 
+/// Form/query parameters expected on the `/token` endpoint.
 #[derive(Debug, Deserialize)]
 pub struct TokenQuery {
+    /// The one-time authorization code issued by `/authorize`.
     pub code: Option<String>,
 }
 
 // Short expiry: no logout button, so reuse would skip the QR scan.
 const SESSION_EXPIRY_IN_SECONDS: u64 = 15 * 60;
 
+/// Shared state cloned into every Axum handler.
 #[derive(Clone, Debug)]
 pub struct AppState {
+    /// Sled database holding OAuth codes and the fingerprint-to-addr map.
     pub db: sled::Db,
+    /// Delta Chat context running the bot account.
     pub dc_context: Context,
+    /// Parsed configuration from `config.toml`.
     pub config: BotConfig,
+    /// Contents of `login.html`, served when a user needs to scan the QR.
     pub login_html: String,
 }
 
@@ -117,6 +144,9 @@ where
     }
 }
 
+/// Build the Axum [`Router`] with all loginbot HTTP handlers attached.
+///
+/// `static_dir` is the filesystem path served at `/` for static assets.
 pub fn build_router(state: AppState, static_dir: String) -> Router {
     let store = MemoryStore::default();
     let session_layer =
