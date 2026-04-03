@@ -7,15 +7,15 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.70"
-deltachat = { git = "https://github.com/chatmail/core", tag = "v2.43.0" }
+deltachat = { git = "https://github.com/chatmail/core", tag = "v2.48.0" }
 serde = { version = "1.0.159", features = ["serde_derive"] }
 sled = "0.34.7"
 axum = { version = "0.7", features = ["form", "query", "json", "http1", "tokio"] }
-tower-http = { version = "0.5", features = ["fs", "trace"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
 tokio = { version = "1.28", features = ["full"] }
 toml = { version = "0.7.3", features = ["parse"] }
 uuid = { version = "1.3.1", features = ["fast-rng", "v4"] }
-tower-sessions = { version = "0.12", features = ["memory-store"] }
+tower-sessions = { version = "0.13", features = ["memory-store"] }
 time = "0.3"
 tower = "0.4.13"
 hyper = { version = "1", features = ["full"] }

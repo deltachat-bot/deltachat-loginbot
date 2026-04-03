@@ -3,7 +3,7 @@ mod shutdown_signal;
 use std::env::{args, current_dir};
 use std::fs::read;
 use std::path::PathBuf;
-use std::str::{from_utf8, FromStr};
+use std::str::from_utf8;
 
 use anyhow::Context as _;
 use deltachat::config::Config;
@@ -26,11 +26,11 @@ async fn main() -> anyhow::Result<()> {
     let level = botconfig
         .log_level
         .as_deref()
-        .and_then(|s| tracing::Level::from_str(s).ok())
+        .and_then(|s| s.parse::<tracing::Level>().ok())
         .unwrap_or(tracing::Level::WARN);
     tracing_subscriber::fmt().with_max_level(level).init();
     let db = sled::open(&botconfig.oauth_db)?;
-    let ctx = ContextBuilder::new(botconfig.deltachat_db.clone().into())
+    let ctx = ContextBuilder::new(botconfig.deltachat_db.clone())
         .open()
         .await
         .context("Creating context failed")?;

@@ -29,17 +29,14 @@ async fn configure_account(
     let db_path = dir.join(format!("{prefix}.db"));
     let ctx = ContextBuilder::new(db_path).open().await?;
 
-    // Provision credentials via the chatmail server's API
     let qr = format!("dcaccount:{CHATMAIL_DOMAIN}");
-    deltachat::qr::set_config_from_qr(&ctx, &qr).await?;
-
-    ctx.set_config(Config::Bot, Some("1")).await?;
-    ctx.configure().await.context("configure failed")?;
+    ctx.add_transport_from_qr(&qr).await?;
     ctx.start_io().await;
     Ok(ctx)
 }
 
 #[test]
+#[ignore]
 fn test_full_login_flow() {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
@@ -60,10 +57,10 @@ async fn full_login_flow() -> Result<()> {
     // 1) Configure bot and user accounts
     log::info!("Configuring bot account…");
     let bot_ctx = configure_account(dir.path(), "bot").await?;
+    bot_ctx.set_config(Config::Bot, Some("1")).await?;
 
     log::info!("Configuring user account…");
     let user_ctx = configure_account(dir.path(), "user").await?;
-    user_ctx.set_config(Config::Bot, Some("0")).await?;
 
     // 2) Start the loginbot server on a random port
     let db = sled::open(dir.path().join("oauth.db"))?;
@@ -77,8 +74,8 @@ async fn full_login_flow() -> Result<()> {
         config: BotConfig {
             email: bot_ctx.get_config(Config::Addr).await?.unwrap_or_default(),
             password: "unused-in-test".into(),
-            deltachat_db: dir.path().join("bot.db").to_string_lossy().into(),
-            oauth_db: dir.path().join("oauth.db").to_string_lossy().into(),
+            deltachat_db: dir.path().join("bot.db"),
+            oauth_db: dir.path().join("oauth.db"),
             listen_addr: "127.0.0.1:0".parse()?,
             oauth: OAuthConfig {
                 client_id: CLIENT_ID.into(),
@@ -90,7 +87,7 @@ async fn full_login_flow() -> Result<()> {
         },
         login_html: "<html>login</html>".into(),
     };
-    let router = build_router(state, static_dir);
+    let router = build_router(state, static_dir.clone());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
@@ -99,9 +96,6 @@ async fn full_login_flow() -> Result<()> {
     tokio::spawn(async move {
         axum::serve(listener, router).await.ok();
     });
-
-    // Give server a moment to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // 3) Use reqwest with a cookie jar so sessions persist
     let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());

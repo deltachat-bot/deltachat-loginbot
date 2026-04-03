@@ -71,9 +71,9 @@ pub struct BotConfig {
     /// IMAP/SMTP password for the bot account.
     pub password: String,
     /// Path to the Delta Chat SQLite database file.
-    pub deltachat_db: String,
+    pub deltachat_db: PathBuf,
     /// Path to the sled key-value store used for OAuth codes and identities.
-    pub oauth_db: String,
+    pub oauth_db: PathBuf,
     /// Socket address the HTTP server listens on (e.g. `"127.0.0.1:8080"`).
     pub listen_addr: SocketAddr,
     /// OAuth2 client configuration (id, secret, redirect URI).
