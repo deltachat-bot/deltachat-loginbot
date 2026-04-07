@@ -1,37 +1,91 @@
-# DeltaChat loginbot for OAuth2
+# DeltaChat Loginbot for OAuth2
 
-This is an OAuth2 API provider for DeltaChat. OAuth2 is one of the APIs behind the buttons such as "Login with Google". On supported websites such as Discourse, the users can login with the providers such as Google, Facebook, Github, Gitlab and others without creating an account on the website(e.g. your Discourse forum).
+> **⚠️ Experimental** this project is deployed to support.delta.chat
+> but otherwise not considered ready for production use.
 
-This loginbot provides a [DeltaChat bot](https://delta.chat) and a web API so that users can login with their DeltaChat account.
+Loginbot is an OAuth2 provider that lets users
+log in to web applications (e.g. Discourse, Wiki.js)
+with their DeltaChat profile.
 
-## What is the principle behind "Login with DeltaChat"?
-"Login with DeltaChat" uses the Secure join protocol to authenticate a user.
-
-When you visit the website and you are not logged in you get to the login page. From there, you are prompted to scan the DeltaChat QR code to login, which is internally just a DeltaChat group invite. Once you join the group the bot knows who you are (no extra email verification needed, because emails were already exchanged in this process). Your session is now authenticated.
-
-In our case of this login bot, the website you access is an OAuth2 provider. So you can use this as a login method for all kinds of web-apps like [Discourse](https://www.discourse.org/) or [Wiki.js](https://js.wiki) which both have a generic OAuth2 authentication module.
+Authentication works via the SecureJoin protocol:
+the user scans a QR code, joins a group,
+and the bot confirms their identity
+and sends the browser window to the Discourse profile setup.
 
 
-## How to run it?
+## Setting up Loginbot with Discourse
 
-Currently, loginbot covers enough of OAuth2 specs to use it with Discourse. You can see the guide in [DISCOURSE.md](./DISCOURSE.md)
+Loginbot experimentally implements enough of the OAuth2 spec
+to serve as a "Login with DeltaChat" provider
+for [Discourse](https://www.discourse.org/).
 
-## How does it work?
 
-1. The front-end first sends a GET request to the `/requestQr` API of this loginbot to create and get an invite to a DeltaChat group.
-2. The API returns an [OpenPGP4FPR](https://github.com/deltachat/interface/blob/master/uri-schemes.md#openpgp4fpr-) link with which the user can join the group with their DeltaChat app.
-3. The front-end calls `/checkStatus` API on an interval to check if the user has joined the group.
-4. Once the user joins the group, the above API returns a success message and the user, the user's contact ID will be written into the session data.
-5. When the front-end gets the success message, it will open `/authorize` page in the user's browser from where they will be redirected to the website's(for example Discourse's) callback URL.
-6. Later, the website will check `/token` API in the login bot to check if the user has really authenticated themselves with our loginbot and that the call to its callback is not fake.
+## Prerequisites
 
-## Technologies used
+- An e-mail address for the bot.
 
- - [axum](https://github.com/tokio-rs/axum) for the web API part
- - [Chatmail core](https://github.com/chatmail/core)
- - [sled](https://github.com/spacejam/sled) as the Key-Value database
- - TOML for the config file
+- Admin access to the Discourse instance.
 
-## License
+- A server with a public IP
+  (root access is not required).
 
-This project is under copyright of Farooq Karimi Zadeh and DeltaChat team. Some rights are reserved under Affero General Public License version 3 or at your option any later version as published by the Free Software Foundation. You should have received a copy of this license in the LICENSE file in this git repository.
+- A reverse-proxy (e.g. nginx) with TLS
+  in front of loginbot's `listen_addr`.
+
+
+## Install
+
+Download the latest release binary (Linux x86-64 musl)
+from the GitHub Releases page, or build from source:
+
+```bash
+cargo build --release
+```
+
+
+## Configure
+
+1. Copy `example_config.toml` to `config.toml`
+   and fill in the bot's `email` and `password`.
+
+2. Generate `client_id` and `client_secret`:
+
+   ```bash
+   bash scripts/gen_secret.sh   # run twice, one per field
+   ```
+
+3. Set `redirect_uri` to
+   `https://<discourse-domain>/auth/oauth2_basic/callback`.
+
+4. Start the bot:
+
+   ```bash
+   ./loginbot /path/to/config.toml
+   ```
+
+   A systemd unit template is provided in `loginbot.service`.
+
+
+## Discourse settings
+
+Install the
+[Discourse OAuth2 Basic plugin](https://github.com/discourse/discourse-oauth2-basic),
+then configure it in *Admin → Site Settings → Login*:
+
+```
+oauth2 enabled:                    true
+oauth2 client id:                  <client_id from config.toml>
+oauth2 client secret:              <client_secret from config.toml>
+oauth2 authorize url:              https://<loginbot-domain>/authorize
+oauth2 token url:                  https://<loginbot-domain>/token
+oauth2 token url method:           POST
+oauth2 callback user id path:      params.info.email
+oauth2 callback user info paths:   name:params.info.username
+                                   email:params.info.email
+oauth2 fetch user details:         false
+oauth2 email verified:             true
+oauth2 button title:               Login with Delta Chat
+oauth2 allow association change:   true
+```
+
+![Discourse example configuration](./discourse.png)
