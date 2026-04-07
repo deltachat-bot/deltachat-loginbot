@@ -35,19 +35,9 @@ async fn configure_account(
     Ok(ctx)
 }
 
-#[test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore]
-fn test_full_login_flow() {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .thread_stack_size(8 * 1024 * 1024)
-        .enable_all()
-        .build()
-        .unwrap();
-    rt.block_on(full_login_flow()).unwrap();
-}
-
-async fn full_login_flow() -> Result<()> {
+async fn test_full_login_flow() -> Result<()> {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .try_init();
