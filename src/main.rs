@@ -61,8 +61,11 @@ async fn main() -> anyhow::Result<()> {
         log::info!("Configure deltachat context");
         ctx.set_config(Config::Addr, Some(botconfig.email.clone().as_str()))
             .await?;
-        ctx.set_config(Config::ConfiguredAddr, Some(botconfig.email.clone().as_str()))
-            .await?;
+        ctx.set_config(
+            Config::ConfiguredAddr,
+            Some(botconfig.email.clone().as_str()),
+        )
+        .await?;
         ctx.set_config(Config::MailPw, Some(botconfig.password.clone().as_str()))
             .await?;
         ctx.set_config(Config::Bot, Some("1")).await?;
