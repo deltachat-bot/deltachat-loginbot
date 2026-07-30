@@ -3,7 +3,9 @@ password = ""
 deltachat_db = "db/dc.sqlite"
 oauth_db = "db/oauth.sled"
 listen_addr = "0.0.0.0:3000"
-enable_request_logging = false
+# login identities are <fingerprint>@<shadow_domain>
+# must be a domain you control and which has no MX record
+shadow_domain = "loginbot-no-mx.testrun.org"
 static_dir = "./static/"
 log_level = "warn"
 
