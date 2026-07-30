@@ -60,6 +60,11 @@
       }, 100);
       function checkStatus() {
         fetch("/checkStatus").then((response) => response.json()).then((response_json) => {
+          if (response_json.error) {
+            clearInterval(checkStatusTimer);
+            document.getElementById("error").innerText = response_json.error;
+            return;
+          }
           if (response_json.success) {
             clearInterval(checkStatusTimer);
             /*

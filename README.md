@@ -66,6 +66,30 @@ cargo build --release
    A systemd unit template is provided in `loginbot.service`.
 
 
+## Important note on Login identities and email addresses
+
+The loginbot uses the SecureJoin protocol to attest a cryptographic key, not an email address.
+Loginbot hands the relying party the pseudo address `<fingerprint>@<shadow_domain>`.
+
+`shadow_domain` must be a domain you control and which has no MX record:
+whoever could receive mail there
+could take over the account that address names.
+Note that chatmail relay users could never receive (cleartext) email
+from Discourse anyway, and the login bot is meant to make them able to login.
+
+Previous legacy loginbot deployments handed out real email addresses.
+They are auto-upgraded to work with the new key-based scheme:
+On its first start loginbot pins the legacy email address of every key contact
+in its database and seals the legacy records for good;
+other keys showing up later are strictly named by their fingerprint only.
+This upgrade runs before new messages are fetched,
+and the records are kept in the Delta Chat account itself.
+
+Note that a regular Discourse user (not using loginbot)
+should be able to attach their Delta Chat login to it from their preferences,
+which needs `oauth2 allow association change`.
+
+
 ## Discourse settings
 
 Install the

@@ -34,9 +34,11 @@ use serde::Deserialize;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::from_utf8;
 
 use anyhow::{Context as _, Error};
 use deltachat::chat::{create_group, get_chat_contacts, send_msg, ChatId};
+use deltachat::config::get_all_ui_config_keys;
 use deltachat::contact::{Contact, ContactId};
 use deltachat::context::Context;
 use deltachat::message::{Message, Viewtype};
@@ -76,6 +78,8 @@ pub struct BotConfig {
     pub oauth_db: PathBuf,
     /// Socket address the HTTP server listens on (e.g. `"127.0.0.1:8080"`).
     pub listen_addr: SocketAddr,
+    /// Shadow login address domain which should never have an MX record.
+    pub shadow_domain: String,
     /// OAuth2 client configuration (id, secret, redirect URI).
     pub oauth: OAuthConfig,
     /// Directory from which static files (login.html, …) are served.
@@ -116,10 +120,27 @@ pub struct TokenQuery {
 // Short expiry: no logout button, so reuse would skip the QR scan.
 const SESSION_EXPIRY_IN_SECONDS: u64 = 15 * 60;
 
+/// Config key prefix of the legacy map, followed by a fingerprint.
+///
+/// The map lives in the account, where it cannot be separated from the
+/// contacts it is about. `ui.` is core's namespace for keys of its API
+/// users.
+const LEGACY_PREFIX: &str = "ui.loginbot.addr.";
+
+/// Config key marking the legacy map as sealed.
+const SEAL_KEY: &str = "ui.loginbot.legacy_sealed";
+
+/// Sled tree legacy deployments hold, mapping a fingerprint to the
+/// address it was handed out as. Read only once when filling the legacy map.
+const IDENTITIES_TREE: &str = "identities";
+
+/// Refusal shown when a contact cannot be a login identity.
+const NO_KEY: &str = "login requires a verified Delta Chat profile";
+
 /// Shared state cloned into every Axum handler.
 #[derive(Clone, Debug)]
 pub struct AppState {
-    /// Sled database holding OAuth codes and the fingerprint-to-addr map.
+    /// Sled database holding the OAuth codes.
     pub db: sled::Db,
     /// Delta Chat context running the bot account.
     pub dc_context: Context,
@@ -147,6 +168,87 @@ where
     }
 }
 
+/// Returns a contact and its login identity, the lowercase hex of its
+/// OpenPGP fingerprint, or `None` if it must not log in.
+async fn login_identity(
+    context: &Context,
+    contact_id: ContactId,
+) -> Result<Option<(Contact, String)>, Error> {
+    let contact = Contact::get_by_id(context, contact_id).await?;
+    let Some(fingerprint) = contact.fingerprint() else {
+        return Ok(None);
+    };
+    if !contact.is_verified(context).await? {
+        return Ok(None);
+    }
+    Ok(Some((contact, fingerprint.hex().to_lowercase())))
+}
+
+/// Returns the email address the relying party uses as an identity.
+///
+/// Users contained in the legacy map keep the address their account was
+/// originally keyed on, everybody else is named by their key.
+async fn login_addr(
+    context: &Context,
+    shadow_domain: &str,
+    fingerprint: &str,
+) -> Result<String, Error> {
+    match context.get_ui_config(&legacy_key(fingerprint)).await? {
+        Some(addr) => Ok(addr),
+        None => Ok(format!("{fingerprint}@{shadow_domain}")),
+    }
+}
+
+/// Returns the legacy map key of `fingerprint`.
+fn legacy_key(fingerprint: &str) -> String {
+    format!("{LEGACY_PREFIX}{}", fingerprint.to_lowercase())
+}
+
+/// Returns how many addresses the legacy map holds.
+async fn legacy_map_len(context: &Context) -> Result<usize, Error> {
+    let keys = get_all_ui_config_keys(context).await?;
+    Ok(keys
+        .iter()
+        .filter(|key| key.starts_with(LEGACY_PREFIX))
+        .count())
+}
+
+/// Puts `addr` into the legacy map unless the key is already mapped.
+async fn record_legacy_addr(context: &Context, fingerprint: &str, addr: &str) -> Result<(), Error> {
+    let key = legacy_key(fingerprint);
+    if addr.contains('@') && context.get_ui_config(&key).await?.is_none() {
+        context.set_ui_config(&key, Some(addr)).await?;
+    }
+    Ok(())
+}
+
+/// Permanently seal the legacy use of external email addresses as identity,
+/// now that loginbot uses key-based shadow addresses.
+///
+/// Can be called multiple times, but will only seal once on first call.
+///
+/// Returns how many addresses the map holds.
+pub async fn seal_legacy_map(context: &Context, db: &sled::Db) -> Result<usize, Error> {
+    if context.get_ui_config(SEAL_KEY).await?.is_some() {
+        return legacy_map_len(context).await;
+    }
+    // What `identities` holds was handed out, what a contact holds was
+    // last seen, so `identities` wins where both know a key.
+    for item in &db.open_tree(IDENTITIES_TREE)? {
+        let (fingerprint, addr) = item?;
+        record_legacy_addr(context, from_utf8(&fingerprint)?, from_utf8(&addr)?).await?;
+    }
+    // `get_all` with no flags lists key-contacts only.
+    for contact_id in Contact::get_all(context, 0, None).await? {
+        let contact = Contact::get_by_id(context, contact_id).await?;
+        if let Some(fingerprint) = contact.fingerprint() {
+            record_legacy_addr(context, &fingerprint.hex(), contact.get_addr()).await?;
+        }
+    }
+    context.set_ui_config(SEAL_KEY, Some("1")).await?;
+    legacy_map_len(context).await
+}
+
 /// Build the Axum [`Router`] with all loginbot HTTP handlers attached.
 ///
 /// `static_dir` is the filesystem path served at `/` for static assets.
@@ -161,7 +263,6 @@ pub fn build_router(state: AppState, static_dir: PathBuf) -> Router {
         .route("/authorize", get(get_authorize))
         // OAuth2 token exchange: validates auth code and returns user info
         .route("/token", post(post_token))
-        .route("/webhook", post(post_webhook))
         // Creates a DC group and returns the securejoin invite link
         .route("/requestQr", get(get_requestqr))
         // Returns the invite QR as SVG; HEAD checks if a group exists
@@ -245,29 +346,17 @@ async fn get_checkstatus(
                     .to_u32();
 
                 if !session.get::<bool>("sent").await?.unwrap_or(false) {
+                    let Some((_, fingerprint)) =
+                        login_identity(dc_context, ContactId::new(member_id)).await?
+                    else {
+                        log::warn!("/checkStatus Refusing contact {member_id}, no verified key.");
+                        return Ok((StatusCode::FORBIDDEN, Json(json!({ "error": NO_KEY }))));
+                    };
+                    log::info!("/checkStatus Contact {member_id} authenticated as {fingerprint}.");
+
                     let mut msg = Message::new(Viewtype::Text);
                     msg.set_text("This chat is a vehicle to connect you with me, the loginbot. You can leave this chat and delete it now.".to_string());
                     send_msg(dc_context, ChatId::new(group_id), &mut msg).await?;
-
-                    // Persist fingerprint → addr on first ever login for this key.
-                    // Subsequent logins with any address sharing the same key
-                    // will be resolved to this canonical addr in /token.
-                    let contact = Contact::get_by_id(dc_context, ContactId::new(member_id)).await?;
-                    if let Some(fp) = contact.fingerprint() {
-                        let id_tree = state.db.open_tree("identities")?;
-                        let fp_hex = fp.hex();
-                        if !id_tree.contains_key(&fp_hex)? {
-                            id_tree.insert(&fp_hex, contact.get_addr().as_bytes())?;
-                            log::info!(
-                                "/checkStatus registered canonical addr {} for fingerprint {fp_hex}",
-                                contact.get_addr()
-                            );
-                        } else {
-                            log::info!(
-                                "/checkStatus fingerprint {fp_hex} already mapped; canonical addr unchanged"
-                            );
-                        }
-                    }
 
                     session.insert("contact_id", member_id).await?;
                     session.insert("sent", true).await?;
@@ -289,11 +378,6 @@ async fn get_checkstatus(
             ),
         ))
     }
-}
-
-#[allow(clippy::unused_async)]
-async fn post_webhook() -> &'static str {
-    "ola"
 }
 
 async fn get_authorize(
@@ -356,28 +440,17 @@ async fn post_token(
         let tree = state.db.open_tree("default")?;
         log::debug!("/token Opened default tree in sled");
         if let Some(data) = tree.get(code)? {
-            let contact = Contact::get_by_id(
-                &state.dc_context,
-                ContactId::new(u32::from_le_bytes(data[..].try_into()?)),
-            )
-            .await?;
-            // Resolve canonical addr: if this contact's key fingerprint was
-            // seen before (possibly under a different address), return the
-            // address from the first successful login so that Discourse always
-            // identifies the user by one stable email.
-            let canonical_addr = if let Some(fp) = contact.fingerprint() {
-                let id_tree = state.db.open_tree("identities")?;
-                id_tree
-                    .get(fp.hex())?
-                    .and_then(|v| String::from_utf8(v.to_vec()).ok())
-                    .unwrap_or_else(|| contact.get_addr().to_string())
-            } else {
-                contact.get_addr().to_string()
+            let bytes = <[u8; 4]>::try_from(&*data)?;
+            let contact_id = ContactId::new(u32::from_le_bytes(bytes));
+            let Some((contact, fingerprint)) =
+                login_identity(&state.dc_context, contact_id).await?
+            else {
+                log::warn!("/token Refusing contact {contact_id}, no verified key.");
+                return Ok((StatusCode::FORBIDDEN, Json(json!({ "error": NO_KEY }))));
             };
-            log::info!(
-                "/token resolved addr: {} → {canonical_addr}",
-                contact.get_addr()
-            );
+            let addr =
+                login_addr(&state.dc_context, &state.config.shadow_domain, &fingerprint).await?;
+            log::info!("/token Key {fingerprint} logs in as {addr}.");
             return Ok((
                 StatusCode::OK,
                 Json(json!({
@@ -385,8 +458,9 @@ async fn post_token(
                     "token_type": "bearer",
                     "expires_in": 1,
                     "info": {
+                        "id": fingerprint,
                         "username": contact.get_name(),
-                        "email": canonical_addr,
+                        "email": addr,
                     }
                 })),
             ));
@@ -402,4 +476,33 @@ async fn post_token(
         StatusCode::BAD_REQUEST,
         Json(json!({ "error": "no code in form data nor string queries" })),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use deltachat::context::ContextBuilder;
+
+    const FP: &str = "9d1c2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293";
+    const DOMAIN: &str = "loginbot.testrun.org";
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_shadow_addr_unless_in_legacy_map() -> Result<(), Error> {
+        let dir = tempfile::tempdir()?;
+        let context = ContextBuilder::new(dir.path().join("dc.db")).open().await?;
+        assert_eq!(
+            login_addr(&context, DOMAIN, FP).await?,
+            format!("{FP}@{DOMAIN}")
+        );
+
+        // Fingerprints are mapped lowercase, whatever case they come in.
+        record_legacy_addr(&context, &FP.to_uppercase(), "user@example.org").await?;
+        assert_eq!(login_addr(&context, DOMAIN, FP).await?, "user@example.org");
+
+        // A mapped address is never replaced.
+        record_legacy_addr(&context, FP, "other@example.org").await?;
+        assert_eq!(login_addr(&context, DOMAIN, FP).await?, "user@example.org");
+        assert_eq!(legacy_map_len(&context).await?, 1);
+        Ok(())
+    }
 }
