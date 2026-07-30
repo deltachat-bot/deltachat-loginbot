@@ -9,7 +9,7 @@ use anyhow::Context as _;
 use deltachat::config::Config;
 use deltachat::context::ContextBuilder;
 use deltachat::EventType;
-use deltachat_loginbot::{build_router, AppState, BotConfig};
+use deltachat_loginbot::{build_router, seal_legacy_map, AppState, BotConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -45,6 +45,8 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
+    let sealed = seal_legacy_map(&ctx, &db).await?;
+    log::info!("Legacy map holds {sealed} addresses.");
     let static_dir = botconfig
         .static_dir
         .clone()
